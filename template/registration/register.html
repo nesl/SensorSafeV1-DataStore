@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if errorMsg %}
+{% for error in errorMsg %}
+	<font color="red">{{error}}</font><br/>
+{% endfor %}
+{% endif %}
+{% if form.errors %}
+	<font color="red">Please correct following errors.</font><br/>
+{% endif %}
+
+<form method="post" action="/register/">
+<table>
+{% for field in form %}
+<tr><th>
+{{field.label_tag}}:
+</th>
+<th>
+{{field}}
+</th>
+<td>
+<p style="color:red">{{field.errors}}</p>
+</td>
+</tr>
+{% endfor %}
+</table>
+<input type="submit" name="Submit" value="Submit" />
+</form>
+
+{% endblock %}

@@ -1,0 +1,744 @@
+{% extends "base.html" %}
+
+{% block head %}
+<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+<style type="text/css">
+html { height: 100% }
+#body { height: 100%; margin: 0px; padding: 0px }
+#map_canvas { height: 100%; width: 100% }
+</style>
+<link href="/files/css/custom-theme/jquery-ui-1.8.8.custom.css" rel="stylesheet" type="text/css"/>
+<script type="text/javascript" src="/files/js/jquery-1.4.4.min.js"></script>
+<script type="text/javascript" src="/files/js/jquery-ui-1.8.8.custom.min.js"></script>
+
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+<script type="text/javascript" src="/files/js/highcharts.js"></script>
+<!--<script type="text/javascript" src="/files/js/themes/gray.js"></script>-->
+
+<script type="text/javascript" src="/files/js/json2-min.js"></script>
+
+<script type="text/javascript">
+
+$(document).ready(function() 
+{
+	initialize();
+
+	Highcharts.setOptions({
+		global: {
+			useUTC: false
+		}
+	});
+
+	$( "#timeslider" ).slider({
+		range: true,
+		min: 0,
+		max: 0,
+		values: [ 75, 300 ],
+		slide: update_timeslider
+	});
+	update_timeslider();
+
+	$("#chart_dialog").dialog({ 
+		autoOpen: false,
+		modal: true,
+		title: 'Chart',
+		width: 750,
+	});
+	
+	var datepickerOptions = {
+		numberOfMonths: 1,
+		showButtonPanel: true,
+		changeMonth: true,
+		changeYear: true,
+		showOtherMonths: true,
+		selectOtherMonths: true
+	};
+	$("#startdate").datepicker(datepickerOptions);
+	$("#enddate").datepicker(datepickerOptions);
+	$("#repeat_enddate").datepicker(datepickerOptions);
+
+	var currentTime = new Date();
+	var month = currentTime.getMonth() + 1;
+	if (month < 10) 
+		month = "0" + month;
+	var day = currentTime.getDate();
+	if (day < 10)
+		day = "0" + day;
+	var year = currentTime.getFullYear();
+	current_date = month + "/" + day + "/" + year;
+	
+	$('#startdate').val(current_date);
+	$('#enddate').val(current_date);
+
+	var hours = currentTime.getHours();
+	if(hours > 11)
+	{
+		ampm = 'pm';
+		if (hours > 12)
+			hours -= 12;
+	}
+	else 
+		ampm = 'am';
+
+	$('#starttime').val(hours + ":00" + ampm);
+	$('#endtime').val(hours + ":59" + ampm);
+
+	/*day = currentTime.getDay();
+	if (day == 1)
+		$('#Mon').attr('checked', true);
+	else if (day == 2)
+		$('#Tue').attr('checked', true);
+	else if (day == 3)
+		$('#Wed').attr('checked', true);
+	else if (day == 4)
+		$('#Thu').attr('chekced', true);
+	else if (day == 5)
+		$('#Fri').attr('checked', true);
+	else if (day == 6)
+		$('#Sat').attr('checked', true);
+	else if (day == 0)
+		$('#Sun').attr('checked', true);*/
+
+	getSummary();
+});
+
+var chart;
+function create_chart(datalist)
+{
+	seriesOption = [];
+	channels = get_checked_channels();
+	for (var i in channels)
+	{
+		seriesOption.push({
+			name: channels[i],
+			data: datalist[i]
+		});
+	}
+	if (channels.length > 1)
+		zoomTypeOption = 'xy';
+	else
+		zoomTypeOption = 'x';
+
+	chart = new Highcharts.Chart({
+		chart: {
+			renderTo: 'container',
+			zoomType: zoomTypeOption,
+		},
+		title: {
+			text: get_checked_channels()+'',
+		},
+		xAxis: {
+			type: 'datetime',
+			/*maxZoom: 14 * 24 * 3600000, // fourteen days*/
+			title: {
+				text: null
+			}
+		},
+		yAxis: {
+			title: {
+				text: null
+			},
+			//startOnTick: false,
+			//showFirstLabel: false
+		},
+		tooltip: {
+			enabled: true,
+			shared: true               
+		},
+		legend: {
+			enabled: false
+		},
+		plotOptions: {
+			line: {
+				marker: {
+					enabled: false
+				}
+			},
+			series: {
+				enableMouseTracking: false,
+				lineWidth: 1,
+				marker: {
+					radius: 1,
+					enabled: false,
+					states: {
+						hover: {
+							enabled: true
+						}
+					}
+				}
+			}
+		},
+		series: seriesOption
+		/*[{
+			name: get_checked_channels()[0],
+			//pointInterval: 24 * 3600 * 1000,
+			//pointStart: Date.UTC(2006, 0, 01),
+			//data: [ 0.8446, 0.8445, 0.8444, 0.8451,   0.8418, 0.8264,   0.8258, 0.8232,   0.8233, 0.8258 ]
+			data: datalist
+		}]*/
+	});
+
+}
+
+function update_timeslider()
+{
+	var startDate = Highcharts.dateFormat('%I:%M:%S %p %b %e, %Y', $( "#timeslider" ).slider( "values", 0 ));
+	var endDate = Highcharts.dateFormat('%I:%M:%S %p %b %e, %Y', $( "#timeslider" ).slider( "values", 1 ));
+	$( "#timerange_text" ).val( startDate + " - " + endDate );
+}
+
+function getRectBox(rect)
+{
+	var box;
+	if (rect != null)
+	{
+		var path = rect.getPath();
+		lats = [ path.getAt(0).lat(), path.getAt(1).lat(), path.getAt(2).lat(), path.getAt(3).lat() ];
+		lngs = [ path.getAt(0).lng(), path.getAt(1).lng(), path.getAt(2).lng(), path.getAt(3).lng() ];
+		minlat = Math.min.apply(null, lats);
+		maxlat = Math.max.apply(null, lats);
+		minlng = Math.min.apply(null, lngs);
+		maxlng = Math.max.apply(null, lngs);
+		box = [ { 'latitude': minlat, 'longitude': minlng }, { 'latitude': maxlat, 'longitude': maxlng } ];
+	}
+	return box
+}
+
+function getIndex(element, list)
+{
+	for (var i in list)
+		if (list[i] == element)
+			return i;
+	return null;
+}
+
+function show_data()
+{
+	if (get_checked_channels().length <= 0) {
+		alert("Please select data channels.");
+		return;
+	}
+	
+	$('#chart_dialog').dialog('open');
+
+	var message = { 'query': getConditions(), 'sort': {'timestamp': 1} };
+	delete message['query']['consumer']
+	console.log('Sending Query');
+	console.log(message);
+	$.post('/query/',
+		{ 'apikey': '{{ apikey }}', 'data': JSON.stringify(message) },
+		function(data, testStatus, XMLHttpRequest) {
+			data = JSON.parse(data);
+			console.log('Received data');
+			console.log(data);
+
+			selected_channels = get_checked_channels();
+			var datalist = [];
+			for (var i in selected_channels)
+				datalist.push([]);
+
+			for (var i in data)
+			{
+				var num_channels;
+				var channel;
+				var index;
+				if (typeof(data[i]['data_channel']) != 'string')
+				{
+					num_channels = data[i]['data_channel'].length;
+					for (var j in data[i]['data_channel'])
+					{
+						index = getIndex(data[i]['data_channel'][j], selected_channels);
+						if (index == null)
+							continue;
+						channel = j;
+						timestamp = data[i]['timestamp'];
+						interval = data[i]['sampling_interval'];
+						for (var k in data[i]['data'])
+						{
+							datalist[index].push([(timestamp+(k*interval)), data[i]['data'][k][channel]]);
+						}
+					}
+				}
+				else
+				{
+					index = getIndex(data[i]['data_channel'], selected_channels);
+					if (index != null)
+					{
+						timestamp = data[i]['timestamp'];
+						interval = data[i]['sampling_interval'];
+						for (var k in data[i]['data'])
+						{
+							datalist[index].push([(timestamp+(k*interval)), data[i]['data'][k]]);
+						}
+					}
+				}
+			}
+			create_chart(datalist);
+		}
+	);
+}
+
+var data;
+var socket, state = 0;
+var mintime, maxtime;
+var markers = [];
+var data_channels;
+var consumers;
+
+function debug(msg) {
+	var str = "";
+	if ($('#debug').html() != "" ) 
+		str = $('#debug').html() + '<br/>'
+	$('#debug').html(str + msg);
+}
+
+var getSummaryQuery;
+function getSummary() {
+	state = 0;
+	getSummaryQuery = getConditions();
+	data_channels = null;
+
+	// delete markers on the map
+	for ( var i in markers )
+	{
+		markers[i].setMap(null);
+		markers[i] = null;
+	}
+	markers = [];
+
+	// get distinct locations
+	var message = { 'query': getSummaryQuery, 'distinct': 'location' };
+	console.log('Sending query')
+	console.log(message);
+	$.post('/query/',
+		{ 'apikey': '{{apikey}}', 'data': JSON.stringify(message) },
+		function(data, textStatus, XMLHttpRequest) {
+			// receive distinct locations.
+			data = JSON.parse(data);
+			console.log('Received data');
+			console.log(data);
+
+			if (data.length <= 0)
+				return
+
+			//find bounding box
+			var latList = [], lngList = [];
+			for (var i in data)
+			{
+				latList.push(data[i]['latitude']);
+				lngList.push(data[i]['longitude']);
+			}
+			minlat = Math.min.apply(null, latList);
+			maxlat = Math.max.apply(null, latList);
+			minlng = Math.min.apply(null, lngList);
+			maxlng = Math.max.apply(null, lngList);
+
+			var bound = new google.maps.LatLngBounds( new google.maps.LatLng(minlat, minlng), new google.maps.LatLng(maxlat, maxlng));
+			map.fitBounds(bound);
+
+			if (map.getZoom()	> 17)
+				map.setZoom(17);
+
+			// add markers
+			for (i = 0; i < data.length; i++)
+			{
+				markers.push(new google.maps.Marker({
+					position: new google.maps.LatLng(data[i]['latitude'], data[i]['longitude']),
+					map: map,
+					//icon: 'http://labs.google.com/ridefinder/images/mm_20_red.png',
+					title: data[i]['latitude'] + ', ' + data[i]['longitude'],
+					//draggable: true,
+				}));
+			}
+		}
+	);
+
+	// get list of timestamps
+	/*var message = { 'query': getSummaryQuery, 'select': {'timestamp': 1}, 'sort': {'timestamp': 1} };
+	console.log('Sending query')
+	console.log(message);
+	$.post( '/query/',
+		{ 'apikey': '{{apikey}}', 'data': JSON.stringify(message) },
+		function (data, textStatus, XMLHttpRequest) {
+			data = JSON.parse(data);
+			console.log('Received data');
+			console.log(data);
+			if (data.length <= 0)
+				return
+
+			mintime = data[0]['timestamp']
+			maxtime = data[data.length-1]['timestamp']
+			$('#timeslider').slider("option", "min", mintime);
+			$('#timeslider').slider("option", "max", maxtime);
+			$('#timeslider').slider("option", "values", [mintime, maxtime]);
+			update_timeslider();
+		}
+	);*/
+
+	// get first timestamp
+	var mintime, maxtime;
+	var message = { 'query': getSummaryQuery, 'select': {'timestamp': 1}, 'sort': {'timestamp': 1}, 'at': 'first' };
+	$.post( '/query/',
+		{ 'apikey': '{{apikey}}', 'data': JSON.stringify(message) },
+		function (data, textStatus, XMLHttpRequest) {
+			data = JSON.parse(data);
+			mintime = data['timestamp'];
+			console.log('Received mintime');
+			console.log(data);
+			$('#timeslider').slider("option", "min", mintime);
+			$('#timeslider').slider("option", "values", [mintime, maxtime]);
+			update_timeslider();
+		}
+	);
+
+	// get last timestamp
+	var message = { 'query': getSummaryQuery, 'select': {'timestamp': 1}, 'sort': {'timestamp': 1}, 'at': 'last' };
+	$.post( '/query/',
+		{ 'apikey': '{{apikey}}', 'data': JSON.stringify(message) },
+		function (data, textStatus, XMLHttpRequest) {
+			data = JSON.parse(data);
+			maxtime = data['timestamp'];
+			console.log('Received maxtime');
+			console.log(data);
+			$('#timeslider').slider("option", "max", maxtime);
+			$('#timeslider').slider("option", "values", [mintime, maxtime]);
+			update_timeslider();
+		}
+	);
+
+	// get list of data_channels
+	var message = { 'query': getSummaryQuery, 'distinct': 'data_channel' };
+	console.log('Sending query')
+	console.log(message);
+	$.post( '/query/',
+		{ 'apikey': '{{apikey}}', 'data': JSON.stringify(message) },
+		function (data, textStatus, XMLHttpRequest) {
+			// receive list of data_channels
+			data_channels = JSON.parse(data);
+			console.log('Received data');
+			console.log(data_channels);
+			if (data.length <= 0)
+				return
+
+			$('#data_channel').html('');
+			for ( var i in data_channels )
+			{
+				old = $('#data_channel').html();
+				$('#data_channel').html(old+'<label><input type="checkbox" id="dc_' + data_channels[i].replace('.', '_') + '"/>' + data_channels[i] + '</label><br/>');
+			}
+		}
+	);
+}
+
+function deleteRegion() {
+	if (rect != null)
+	{
+		rect.setMap(null);
+		rect = null;
+	}
+}
+
+var map;
+var rect;
+var isDrawingRect = false;
+
+function initialize() 
+{
+	var myLatLng = new google.maps.LatLng(34.069167790000002, -118.44349416);
+	var myOptions = {
+			zoom: 1,
+			center: myLatLng,
+			mapTypeId: google.maps.MapTypeId.ROADMAP
+	};
+	map = new google.maps.Map(document.getElementById("map_canvas"), myOptions);
+
+	/*var marker = new google.maps.Marker({
+		position: myLatLng,
+		map: map,
+		//icon: 'http://labs.google.com/ridefinder/images/mm_20_red.png',
+		title: 'Hey Marker'
+	});*/
+
+	/*coords = [{'latitude': 34.068468666666668, 'longitude': -118.4432779}, {'latitude': 34.0684696, 'longitude': -118.44331360000001}, {'latitude': 34.068489249999999, 'longitude': -118.4432877}, {'latitude': 34.068511800000003, 'longitude': -118.443409}, {'latitude': 34.068523200000001, 'longitude': -118.443427}, {'latitude': 34.068526666666664, 'longitude': -118.44337333333334}, {'latitude': 34.068539766666667, 'longitude': -118.44335606666668}, {'latitude': 34.068576300000004, 'longitude': -118.4434509}, {'latitude': 34.068640799999997, 'longitude': -118.4434928}]
+
+	for (i = 0; i < coords.length; i++)
+	{
+		var marker = new google.maps.Marker({
+			position: new google.maps.LatLng(coords[i]['latitude'], coords[i]['longitude']),
+			map: map,
+			//icon: 'http://labs.google.com/ridefinder/images/mm_20_red.png',
+			title: 'Hey Marker'
+		});
+	}*/
+
+	google.maps.event.addListener(map, 'click', function(event) {
+		drawRect(event.latLng);
+	});
+
+	google.maps.event.addListener(map, 'mousemove', function(event) {
+		/*$('#latitude').html(event.latLng.lat());
+		$('#longitude').html(event.latLng.lng());*/
+		if (isDrawingRect)
+		{
+			var path = rect.getPath();
+			path.setAt(1, new google.maps.LatLng(path.getAt(0).lat(), event.latLng.lng()));
+			path.setAt(2, event.latLng);
+			path.setAt(3, new google.maps.LatLng(event.latLng.lat(), path.getAt(0).lng()));
+		}
+	});
+}
+
+function drawRect(latLng)
+{
+	if (!isDrawingRect)
+	{
+		if (rect != null)
+		{
+			rect.setMap(null);
+			rect = null;
+		}
+		var coords = [ latLng, latLng, latLng, latLng	];
+		rect = new google.maps.Polygon({
+			paths: coords,
+			strokeColor: "#FF0000",
+			strokeOpacity: 0.8,
+			strokeWeight: 2,
+			fillColor: "#FF0000",
+			fillOpacity: 0.35,
+			map: map
+		});
+
+		google.maps.event.addListener(rect, 'click', function(event) {
+			drawRect(event.latLng);
+		});
+
+		google.maps.event.addListener(rect, 'mousemove', function(event) {
+			if (isDrawingRect)
+			{
+				var path = rect.getPath();
+				path.setAt(1, new google.maps.LatLng(path.getAt(0).lat(), event.latLng.lng()));
+				path.setAt(2, event.latLng);
+				path.setAt(3, new google.maps.LatLng(event.latLng.lat(), path.getAt(0).lng()));
+			}
+		});
+
+		isDrawingRect = true;
+	}
+	else
+	{
+		isDrawingRect = false;
+	}
+}
+
+function get_checked_channels()
+{
+	var channels = [];
+	for (var i in data_channels)
+	{
+		if ($('#dc_' + data_channels[i].replace('.','_')).attr('checked') == true)
+			channels.push(data_channels[i]);
+	}
+	return channels;
+}
+
+function test()
+{
+	//debug(get_checked_channels());
+	//debug(consumers);
+	//debug(get_checked_consumers());
+	getConditions();
+}
+
+function getConditions()
+{
+	// location
+	var box = getRectBox(rect);
+	var cond = {};
+	if (box != null)
+	{
+		cond['location.latitude'] = { '$gte': box[0]['latitude'], '$lte': box[1]['latitude'] };
+		cond['location.longitude'] = { '$gte': box[0]['longitude'], '$lte': box[1]['longitude'] };
+	}
+
+	// timestamp
+	mintime = $('#timeslider').slider('values',0);
+	maxtime = $('#timeslider').slider('values',1);
+	if ($('#repeat').attr('checked') == false) {
+		if ($('#timerange').attr('checked') == true)
+		{
+			if (mintime > 0 && maxtime > 0) {
+				cond['timestamp'] =  { '$gte': mintime, '$lte': maxtime };
+			}
+		}
+	} else {
+		if (mintime > 0 && maxtime > 0 && $('#timerange').attr('checked') == true) {
+			cond['repeat_time'] = { 'time_range': [ mintime, maxtime ] };
+		}	else {
+			cond['repeat_time'] = {}
+		}
+
+		if ($('#allday').attr('checked') == false)
+			cond['repeat_time']['hour_min'] = [ $('#repeat_starttime').val(), $('#repeat_endtime').val() ];
+		
+		cond['repeat_time']['day'] = [];
+		if ( $('#Mon').attr('checked') == true ) 
+			cond['repeat_time']['day'].push($('#Mon').val());
+		if ( $('#Tue').attr('checked') == true ) 
+			cond['repeat_time']['day'].push($('#Tue').val());
+		if ( $('#Wed').attr('checked') == true ) 
+			cond['repeat_time']['day'].push($('#Wed').val());
+		if ( $('#Thu').attr('checked') == true ) 
+			cond['repeat_time']['day'].push($('#Thu').val());
+		if ( $('#Fri').attr('checked') == true ) 
+			cond['repeat_time']['day'].push($('#Fri').val());
+		if ( $('#Sat').attr('checked') == true ) 
+			cond['repeat_time']['day'].push($('#Sat').val());
+		if ( $('#Sun').attr('checked') == true ) 
+			cond['repeat_time']['day'].push($('#Sun').val());
+
+		console.log(cond);
+	}
+
+	// data channels
+	channels = get_checked_channels();
+	if (channels.length > 0)
+	{ 
+		cond['data_channel'] = { '$in': [] };
+		for (var i in channels)
+			cond['data_channel']['$in'].push(channels[i]);
+	}
+	
+	return cond;
+}
+
+function createRule()
+{
+	var rule = getConditions();
+	$.post('/uploadrules/'
+		, { 'apikey': '{{apikey}}', 'data': JSON.stringify(rule) }
+		, function(data, textStatus, XMLHttpRequest) {
+			alert(data);
+		}
+	);
+}
+
+function deleteAllRules()
+{
+	$.post('/deleterules/'
+		, { 'apikey': '{{apikey}}' }
+		, function(data, textStatus, XMLHttpRequest) {
+			alert(data);
+		}
+	);
+}
+
+function listRules()
+{
+	$.post('/getrules/'
+		, { 'apikey': '{{apikey}}' }
+		, function(data, textStatus, XMLHttpRequest) {
+			debug(data);
+		}
+	);
+}
+
+function initTimeRange()
+{
+		$('#timeslider').slider("option", "max", 0);
+		$('#timeslider').slider("option", "min", 0);
+		$('#timeslider').slider("option", "values", [0, 0]);
+		update_timeslider();
+}
+
+
+function allday_checkbox()
+{
+	if ($('#allday').attr('checked') == true) {
+		$('#repeat_time').hide();
+	} else {
+		$('#repeat_time').show();
+	}
+}
+
+</script>
+{% endblock %}
+
+{% block content %}
+<b>Location</b>
+<table cellspacing=0 cellpadding=0>
+<tr>
+<td width=600 height=350 colspan=2><div id="map_canvas"></div></td>
+</tr>
+<tr>
+<td align='right'>
+
+<button id='deleteRegion' onclick='deleteRegion()'>Delete Region</button><br/>
+<!--<button id='initTimeRange' onclick='initTimeRange()'>Init Time Range</button><br/>
+<button id='createRule' onclick='createRule()'>Create Rule</button><br />
+<button id='deleteAllRules' onclick='deleteAllRules()'>Delete All Rules</button><br />
+<button id='listRules' onclick='listRules()'>List Rules</button><br/>-->
+</td></tr>
+</table>
+
+<b>Time</b>
+<table cellspacing=0 cellpadding=0>
+<tr>
+	<td width=110>
+	<label><input type='checkbox' id='timerange'>Time range:</label>
+	</td>
+	<td width=490>
+	<input type="text" id="timerange_text" size=50 style="border:0; font-weight:bold;" /><br/>
+	<div id="timeslider"></div>
+	</td>
+</tr>
+</table>
+
+<br/>
+
+<table cellspacing=0 cellpadding=0>
+<tr>
+<td width=110>
+	<label><input type="checkbox" id="repeat">Repeat:</label>
+</td>
+<td width=490>
+	<label><input type="checkbox" id="Sun" value='Sun'>Sun</label>
+	<label><input type="checkbox" id="Mon" value='Mon' checked>Mon</label> 
+	<label><input type="checkbox" id="Tue" value='Tue' checked>Tue</label> 
+	<label><input type="checkbox" id="Wed" value='Wed' checked>Wed</label> 
+	<label><input type="checkbox" id="Thu" value='Thu' checked>Thu</label> 
+	<label><input type="checkbox" id="Fri" value='Fri' checked>Fri</label> 
+	<label><input type="checkbox" id='Sat' value='Sat'>Sat</label><br/> 
+
+	<label><input type="checkbox" id="allday" onClick="allday_checkbox()">All Day</label>
+	&nbsp;&nbsp;&nbsp;<font id='repeat_time'>
+	From <input type="text" size=10 id='repeat_starttime' value='9:51pm'> 
+	to <input type="text" size=10 id='repeat_endtime' value='9:55pm'>
+	<!--<input type="text" id="startdate"><input type="text" id="starttime"> to <input type="text" id="endtime"><input type="text" id="enddate"><br/>-->
+	</font>
+
+</td>
+</tr>
+</table>
+
+<br/>
+<b>Data Channels</b>
+<table cellspacing=0 cellpadding=0>
+<tr><td><div id="data_channel"></div></td></tr>
+
+</table>
+<br/>
+
+<table width=600>
+<tr><td align='center'>
+<button id='show_data' onclick='show_data()'>Show Data</button>
+<button id='getSummary' onclick='getSummary()'>Get Summary</button>
+</td></tr>
+</table>
+
+<br/><br/><br/><br/>
+
+<div id='chart_dialog'>
+<div id="container" style="width: 700px; height: 400px; margin: 0 auto"></div>
+</div>
+
+{% endblock %}

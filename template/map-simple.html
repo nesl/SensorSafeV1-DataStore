@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+<title>test</title>
+<style type="text/css">
+html { height: 100% }
+body { height: 100%; margin: 0px; padding: 0px }
+#map_canvas { height: 100%; width: 100% }
+#finance { width: 100% }
+</style>
+
+<link href="/files/css/smoothness/jquery-ui-1.8.7.custom.css" rel="stylesheet" type="text/css"/> 
+<script type="text/javascript" src="/files/js/jquery-1.4.4.min.js"></script>
+<script type="text/javascript" src="/files/js/jquery-ui-1.8.7.custom.min.js"></script>
+
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+<script type="text/javascript" src="/files/js/highcharts.js"></script>
+<!--<script type="text/javascript" src="/files/js/themes/gray.js"></script>-->
+
+<script type="text/javascript">
+
+				function createMaster(data, timestamp) {
+					masterChart = new Highcharts.Chart({
+						chart: {
+							renderTo: 'master-container',
+							reflow: false,
+							borderWidth: 0,
+							backgroundColor: null,
+							marginLeft: 50,
+							marginRight: 20,
+							zoomType: 'x',
+							events: {
+								
+								// listen to the selection event on the master chart to update the 
+								// extremes of the detail chart
+								selection: function(event) {
+									var extremesObject = event.xAxis[0],
+										min = extremesObject.min,
+										max = extremesObject.max,
+										detailData = [],
+										xAxis = this.xAxis[0];
+									
+									// reverse engineer the last part of the data
+									jQuery.each(this.series[0].data, function(i, point) {
+										if (point.x > min && point.x < max) {
+											detailData.push({
+												x: point.x,
+												y: point.y
+											});
+										}
+									});
+									
+									// move the plot bands to reflect the new detail span
+									xAxis.removePlotBand('mask-before');
+									xAxis.addPlotBand({
+										id: 'mask-before',
+										from: timestamp[0],
+										to: min,
+										color: 'rgba(0, 0, 0, 0.2)'
+									});
+									
+									xAxis.removePlotBand('mask-after');
+									xAxis.addPlotBand({
+										id: 'mask-after',
+										from: max,
+										to: timestamp[timestamp.length-1],
+										color: 'rgba(0, 0, 0, 0.2)'
+									});
+									
+									
+									detailChart.series[0].setData(detailData);
+									
+									return false;
+								}
+							}
+						},
+						title: {
+							text: null
+						},
+						xAxis: {
+							//type: 'datetime',
+							/*showLastTickLabel: true,
+							//maxZoom: 14 * 24 * 3600, // fourteen days
+							plotBands: [{
+								id: 'mask-before',
+								from: timestamp[0],
+								to: timestamp[timestamp.length-1],
+								color: 'rgba(0, 0, 0, 0.2)'
+							}],
+							title: {
+								text: null
+							}*/
+						},
+						yAxis: {
+							gridLineWidth: 0,
+							labels: {
+								enabled: false
+							},
+							title: {
+								text: null
+							},
+							min: 500,
+							showFirstLabel: false
+						},
+						tooltip: {
+							formatter: function() {
+								return false;
+							}
+						},
+						legend: {
+							enabled: false
+						},
+						credits: {
+							enabled: false
+						},
+						plotOptions: {
+							series: {
+								fillColor: {
+									linearGradient: [0, 0, 0, 70],
+									stops: [
+										[0, '#4572A7'],
+										[1, 'rgba(0,0,0,0)']
+									]
+								},
+								lineWidth: 1,
+								marker: {
+									enabled: false
+								},
+								shadow: false,
+								states: {
+									hover: {
+										lineWidth: 1						
+									}
+								},
+								enableMouseTracking: false
+							}
+						},
+					
+						series: [{
+							type: 'area',
+							name: 'ECG',
+							pointInterval: timestamp[1] - timestamp[0],
+							pointStart: timestamp[0],
+							data: data
+						}],
+						
+						exporting: {
+							enabled: false
+						}
+					
+					}, function(masterChart) {
+						createDetail(masterChart, timestamp)
+					});
+				}
+				
+				// create the detail chart
+				function createDetail(masterChart, timestamp) {
+					
+					// prepare the detail chart
+					var detailData = [],
+						detailStart = timestamp[0];
+						
+					jQuery.each(masterChart.series[0].data, function(i, point) {
+						if (point.x >= detailStart) {
+							detailData.push(point.y);
+						}
+					});
+					
+					// create a detail chart referenced by a global variable
+					detailChart = new Highcharts.Chart({
+						chart: {
+							marginBottom: 120,
+							renderTo: 'detail-container',
+							reflow: false,
+							marginLeft: 50,
+							marginRight: 20,
+							style: {
+								position: 'absolute'
+							}
+						},
+						credits: {
+							enabled: false
+						},
+						title: {
+							text: 'Sensor Data'
+						},
+						/*subtitle: {
+							text: 'Select an area by dragging across the lower chart'
+						},*/
+						/*xAxis: {
+							type: 'datetime'
+						},*/
+						yAxis: {
+							title: null,
+							maxZoom: 0.1
+						},
+						tooltip: {
+							formatter: function() {
+								var point = this.points[0];
+								return '<b>'+ point.series.name +'</b><br/>'+
+									Highcharts.dateFormat('%H:%M:%S %A %B %e %Y', this.x*1000) + ':<br/>'+
+									Highcharts.numberFormat(point.y, 2);
+							},
+							shared: true
+						},
+						legend: {
+							enabled: false
+						},
+						plotOptions: {
+							series: {
+								marker: {
+									enabled: false,
+									states: {
+										hover: {
+											enabled: true,
+											radius: 3
+										}
+									}
+								}
+							}
+						},
+						series: [{
+							name: 'ECG',
+							pointStart: detailStart,
+							pointInterval: timestamp[0] - timestamp[1],
+							data: detailData
+						}],
+						
+						exporting: {
+							enabled: false
+						}
+					
+					});
+				}
+					
+var masterChart, detailChart;
+				
+
+$(document).ready(function() {
+	$("#dialog").dialog({ autoOpen: false } );
+	var datepickerOptions = {
+		numberOfMonths: 1,
+		showButtonPanel: true,
+		changeMonth: true,
+		changeYear: true,
+		showOtherMonths: true,
+		selectOtherMonths: true
+	};
+	$("#startdate").datepicker(datepickerOptions);
+	$("#enddate").datepicker(datepickerOptions);
+				
+	// make the container smaller and add a second container for the master chart
+	var $container = $('#container')
+		.css('position', 'relative');
+	
+	var $detailContainer = $('<div id="detail-container">')
+		.appendTo($container);
+	
+	var $masterContainer = $('<div id="master-container">')
+		.css({ position: 'absolute', top: 300, height: 80, width: '100%' })
+		.appendTo($container);
+					
+
+});
+
+function testbutton()
+{
+	$('#debug').html('test');
+	$('#dialog').dialog('open');
+}
+
+/*function initchart(datalist)
+{
+	//prettyPrint();
+  HumbleFinance.trackFormatter = function (obj) {
+		var x = Math.floor(obj.x);
+		var text = 'timestamp: ' + data[x].timestamp + ', value: ' + data[x].value;
+		return text
+	}
+  HumbleFinance.xTickFormatter = function (n) { 
+        if (n == 0) {
+            return false;
+        }
+        var timestamp = data[n].timestamp;
+        return timestamp; 
+    }
+	HumbleFinance.init('finance', datalist, [], []);
+}*/
+
+var data;
+
+function onmessage(msg)
+{
+	//debug('Got this msg: ' + msg.data);
+	data = eval('(' + msg.data + ')');
+	//alert(data[0]['timestamp']);
+
+	debug(data.length);
+	var latLng = new google.maps.LatLng(data[0]['latitude'], data[0]['longitude']);
+	map.setCenter(latLng);
+	map.setZoom(17);
+	for (i = 0; i < data.length; i++)
+	{
+		var marker = new google.maps.Marker({
+			position: new google.maps.LatLng(data[i]['latitude'], data[i]['longitude']),
+			map: map,
+			//icon: 'http://labs.google.com/ridefinder/images/mm_20_red.png',
+			title: data[i]['sensor'],
+			//draggable: true,
+		});
+	}
+
+}
+
+function debug(msg) {
+	var str = "";
+	if ($('#debug').html() != "" ) 
+		str = $('#debug').html() + '<br/>'
+	$('#debug').html(str + msg);
+}
+
+var socket;
+function connect() {
+	try {
+		socket = new WebSocket("ws://fieldstream.nesl.ucla.edu:8080/datastore/haksoo_test2/getDistinctLocations/");
+		socket.onopen = function() {
+			debug('websocket opened');
+		}
+		socket.onmessage = onmessage;
+		socket.onclose = function() {
+			debug('websocket closed');
+		}
+		
+		var socket2 = new WebSocket("ws://fieldstream.nesl.ucla.edu:8080/datastore/wstest/");
+		socket2.onmessage = function(msg) {
+			debug('on socket2 message');
+			data = eval('(' + msg.data + ')');
+			var datalist = [];
+			var timestamp = [];
+			for (i = 0; i < data.length; i++)
+			{
+				datalist.push(data[i]['value']);
+				timestamp.push(data[i]['timestamp']);
+			}
+			createMaster(datalist, timestamp);
+		}
+	} catch (exception) {
+		debug(exception);
+	}
+}
+
+function send() {
+
+	try {
+		socket.send('Hello WebSocket');
+	} catch (exception) {
+		debug(exception);
+	}
+}
+
+//var data = eval('(' + '{{ data|escapejs }}' + ')');
+//alert(data);
+var map;
+var rect;
+var isDrawingRect = false;
+
+function initialize() 
+{
+	debug('started');
+
+	var myLatLng = new google.maps.LatLng(34.069167790000002, -118.44349416);
+	var myOptions = {
+			zoom: 14,
+			center: myLatLng,
+			mapTypeId: google.maps.MapTypeId.ROADMAP
+	};
+	map = new google.maps.Map(document.getElementById("map_canvas"), myOptions);
+
+	/*var marker = new google.maps.Marker({
+		position: myLatLng,
+		map: map,
+		//icon: 'http://labs.google.com/ridefinder/images/mm_20_red.png',
+		title: 'Hey Marker'
+	});*/
+
+	/*coords = [{'latitude': 34.068468666666668, 'longitude': -118.4432779}, {'latitude': 34.0684696, 'longitude': -118.44331360000001}, {'latitude': 34.068489249999999, 'longitude': -118.4432877}, {'latitude': 34.068511800000003, 'longitude': -118.443409}, {'latitude': 34.068523200000001, 'longitude': -118.443427}, {'latitude': 34.068526666666664, 'longitude': -118.44337333333334}, {'latitude': 34.068539766666667, 'longitude': -118.44335606666668}, {'latitude': 34.068576300000004, 'longitude': -118.4434509}, {'latitude': 34.068640799999997, 'longitude': -118.4434928}]
+
+	for (i = 0; i < coords.length; i++)
+	{
+		var marker = new google.maps.Marker({
+			position: new google.maps.LatLng(coords[i]['latitude'], coords[i]['longitude']),
+			map: map,
+			//icon: 'http://labs.google.com/ridefinder/images/mm_20_red.png',
+			title: 'Hey Marker'
+		});
+	}*/
+
+	google.maps.event.addListener(map, 'click', function(event) {
+		drawRect(event.latLng);
+	});
+
+	google.maps.event.addListener(map, 'mousemove', function(event) {
+		$('#latitude').html(event.latLng.lat());
+		$('#longitude').html(event.latLng.lng());
+		if (isDrawingRect)
+		{
+			var path = rect.getPath();
+			path.setAt(1, new google.maps.LatLng(path.getAt(0).lat(), event.latLng.lng()));
+			path.setAt(2, event.latLng);
+			path.setAt(3, new google.maps.LatLng(event.latLng.lat(), path.getAt(0).lng()));
+		}
+	});
+}
+
+function drawRect(latLng)
+{
+	if (!isDrawingRect)
+	{
+		if (rect != null)
+		{
+			rect.setMap(null);
+			rect = null;
+		}
+		var coords = [ latLng, latLng, latLng, latLng	];
+		rect = new google.maps.Polygon({
+			paths: coords,
+			strokeColor: "#FF0000",
+			strokeOpacity: 0.8,
+			strokeWeight: 2,
+			fillColor: "#FF0000",
+			fillOpacity: 0.35,
+			map: map
+		});
+
+		google.maps.event.addListener(rect, 'click', function(event) {
+			drawRect(event.latLng);
+		});
+
+		isDrawingRect = true;
+	}
+	else
+	{
+		isDrawingRect = false;
+	}
+}
+</script>
+
+</head>
+
+
+<body onload="initialize()">
+<table>
+<tr><td width=800 height=400><div id="map_canvas"></div></td>
+<td valign='top'>
+<button id='connect' onclick='connect()'>Connect</button><br/>
+<button id='send' onclick='send()'>Send</button><br/>
+<button id='testbutton' onclick='testbutton()'>Test Button</button><br/>
+Latitude: <b id='latitude'>?</b><br/>
+Longitude: <b id='longitude'>?</b><br/>
+<div id='debug'></div>
+</td></tr>
+<tr><td>
+<div id="container" style="width: 800px; height: 400px; margin: 0 auto"></div>
+</td>
+<td>
+
+</td>
+</tr>
+</table>
+
+<div id="dialog" title="Test Dialog">
+<p>This is test dialog.</p>
+<input type="text" id="startdate"> <input type="text" id="starttime" value="1:30pm"> 
+to <input type="text" id="endtime"> <input type="text" id="enddate">
+</div>
+
+</body>
+</html>

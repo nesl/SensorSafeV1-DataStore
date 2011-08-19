@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<b>Your Profile</b><br/>
+<br/>
+{{ user.first_name }} {{user.last_name}}<br/>
+{{ user.email }}<br/>
+Your API key (Keep this private): {{ apiKey }}<br/>
+<br />
+<b>
+<a href="/display/">Access your data</a><br/>
+<a href="/privacyrules/">Privacy Rules</a><br />
+</b>
+{% endblock %}

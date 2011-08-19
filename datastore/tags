@@ -1,0 +1,43 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.7	//
+SimpleTest	tests.py	/^class SimpleTest(TestCase):$/;"	c
+UserProfile	models.py	/^class UserProfile(models.Model):$/;"	c
+UserRegistrationForm	forms.py	/^class UserRegistrationForm(forms.Form):$/;"	c
+__unicode__	models.py	/^	def __unicode__(self):      $/;"	m	class:UserProfile	file:
+check_modify	views.py	/^def check_modify(check_item, rule):$/;"	f
+check_post_request	views.py	/^def check_post_request(postdata):$/;"	f
+check_post_request_apikey	views.py	/^def check_post_request_apikey(postdata):$/;"	f
+deleterules	views.py	/^def deleterules(request):$/;"	f
+display	views.py	/^def display(request):$/;"	f
+get_modify_list	views.py	/^def get_modify_list(search_cond):$/;"	f
+getrules	views.py	/^def getrules(request):$/;"	f
+isExistQueryOptions	views.py	/^def isExistQueryOptions(message):$/;"	f
+is_allow_condition_match	views.py	/^def is_allow_condition_match(check_item, rule):$/;"	f
+is_deny_condition_match	views.py	/^def is_deny_condition_match(check_item, rule):$/;"	f
+is_time_overlap	views.py	/^def is_time_overlap(time_a, time_b):$/;"	f
+is_time_subset	views.py	/^def is_time_subset(time_a, time_b):$/;"	f
+json_dump_pretty_html	views.py	/^def json_dump_pretty_html(data):$/;"	f
+locationlabel	views.py	/^def locationlabel(request):$/;"	f
+log	views.py	/^def log(object):$/;"	f
+logout_view	views.py	/^def logout_view(request):$/;"	f
+mean	views.py	/^def mean(l):$/;"	f
+modify_waveseg	views.py	/^def modify_waveseg(waveseg, modify_rule, first_timestamp):$/;"	f
+print_error_context	views.py	/^def print_error_context():$/;"	f
+privacyrules	views.py	/^def privacyrules(request):$/;"	f
+process_location_label	views.py	/^def process_location_label(query, username):$/;"	f
+process_modify_rules	views.py	/^def process_modify_rules(modify_result, collection):$/;"	f
+process_repeat_time	views.py	/^def process_repeat_time(query, collection):$/;"	f
+profile	views.py	/^def profile(request):$/;"	f
+query	views.py	/^def query(request):$/;"	f
+reduce_address	views.py	/^def reduce_address(address_str, level):$/;"	f
+register	views.py	/^def register(request, url=None):$/;"	f
+search_rules	views.py	/^def search_rules(request):$/;"	f
+status	views.py	/^def status(request):$/;"	f
+test	views.py	/^def test(request):$/;"	f
+test_basic_addition	tests.py	/^    def test_basic_addition(self):$/;"	m	class:SimpleTest
+upload	views.py	/^def upload(request):$/;"	f
+uploadrules	views.py	/^def uploadrules(request):$/;"	f

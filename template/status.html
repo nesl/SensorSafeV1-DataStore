@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block head %}
+<link href="/files/css/smoothness/jquery-ui-1.8.7.custom.css" rel="stylesheet" type="text/css"/> 
+<script type="text/javascript" src="/files/js/jquery-1.4.4.min.js"></script>
+<script type="text/javascript" src="/files/js/jquery-ui-1.8.7.custom.min.js"></script>
+<script type="text/javascript" src="/files/js/json2-min.js"></script>
+<script type="text/javascript">
+$(document).ready( function() {
+	var message = {};
+	console.log('Sending Query');
+	console.log(message);
+	$.post('/query/',
+		{ 'apikey': '{{ apikey }}', 'data': JSON.stringify(message) },
+		function(data, textStatus, XMLHttpRequest) {
+			console.log(textStatus);
+			console.log(JSON.parse(data));
+		}
+	);
+});
+</script>
+{% endblock %}
+
+{% block content %}
+{{ user.username }}
+{% endblock %}
+
