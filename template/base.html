@@ -1,11 +1,12 @@
 <html>
 <head>
-<title>{% block title %}FieldStream{% endblock %}</title>
+<title>{% block title %}SensorSafe: Data Store (beta){% endblock %}</title>
 {% block head %}{% endblock %}
 </head>
 
 <body>
-<h2>FieldStream SensorSafe DataStore</h2>
+<font face="arial">
+<font size="5"><b>SensorSafe: Data Store</b> <font size="3">(beta)</font></font><br/>
 {% block login %}
 	{% if user.is_authenticated %}
 		<p>Welcome {{ user.username }}! <a href="/profile/">My Profile</a> <a href="/logout/">Sign out</a></p>
@@ -15,5 +16,6 @@
 {% endblock %}
 
 {% block content %}{% endblock %}
+</end>
 </body>
 </html>
