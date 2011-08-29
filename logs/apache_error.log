@@ -19603,3 +19603,70 @@
 [Wed Aug 03 08:20:47 2011] [error] [client 169.232.194.70] chunked Transfer-Encoding forbidden: /x.html
 [Wed Aug 03 08:20:47 2011] [error] [client 169.232.194.70] chunked Transfer-Encoding forbidden: /x.html
 [Wed Aug 03 08:22:24 2011] [error] [client 169.232.194.70] client sent HTTP/1.1 request without hostname (see RFC2616 section 14.23): /
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171] mod_wsgi (pid=4402): Exception occurred processing WSGI script '/home/haksoo/django-projects/sensorsafe/apache/django.wsgi'.
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171] Traceback (most recent call last):
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/core/handlers/wsgi.py", line 241, in __call__
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     response = self.get_response(request)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/core/handlers/base.py", line 73, in get_response
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     response = middleware_method(request)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/middleware/common.py", line 56, in process_request
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     if (not _is_valid_path(request.path_info) and
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/middleware/common.py", line 142, in _is_valid_path
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     urlresolvers.resolve(path)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 303, in resolve
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     return get_resolver(urlconf).resolve(path)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 218, in resolve
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     sub_match = pattern.resolve(new_path)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 125, in resolve
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     return self.callback, args, kwargs
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 131, in _get_callback
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     self._callback = get_callable(self._callback_str)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/utils/functional.py", line 130, in wrapper
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     result = func(*args)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 58, in get_callable
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     lookup_view = getattr(import_module(mod_name), func_name)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/usr/local/lib/python2.6/dist-packages/django/utils/importlib.py", line 35, in import_module
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     __import__(name)
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "/home/haksoo/django-projects/sensorsafe/datastore/views.py", line 26, in <module>
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     db = pymongo.Connection()['sensorsafe_database']
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "build/bdist.linux-x86_64/egg/pymongo/connection.py", line 305, in __init__
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     self.__find_master()
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]   File "build/bdist.linux-x86_64/egg/pymongo/connection.py", line 509, in __find_master
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171]     raise AutoReconnect("could not find master/primary")
+[Fri Aug 19 11:16:32 2011] [error] [client 128.97.244.171] AutoReconnect: could not find master/primary
+[Fri Aug 19 11:24:01 2011] [error] [client 216.245.203.87] client sent HTTP/1.1 request without hostname (see RFC2616 section 14.23): /w00tw00t.at.ISC.SANS.test0:)
+[Tue Aug 23 06:36:31 2011] [error] [client 216.245.203.87] client sent HTTP/1.1 request without hostname (see RFC2616 section 14.23): /w00tw00t.at.ISC.SANS.test0:)
+[Fri Aug 26 00:22:33 2011] [error] [client 123.30.50.113] Invalid URI in request GET HTTP/1.1 HTTP/1.1
+[Sat Aug 27 20:13:55 2011] [error] [client 211.181.210.176] Invalid URI in request GET admin/scripts/setup.php HTTP/1.1
+[Sat Aug 27 20:15:06 2011] [error] [client 211.181.210.176] Invalid URI in request GET  HTTP/1.1
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210] mod_wsgi (pid=2786): Exception occurred processing WSGI script '/home/haksoo/django-projects/sensorsafe/apache/django.wsgi'.
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210] Traceback (most recent call last):
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/core/handlers/wsgi.py", line 241, in __call__
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     response = self.get_response(request)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/core/handlers/base.py", line 73, in get_response
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     response = middleware_method(request)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/middleware/common.py", line 56, in process_request
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     if (not _is_valid_path(request.path_info) and
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/middleware/common.py", line 142, in _is_valid_path
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     urlresolvers.resolve(path)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 303, in resolve
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     return get_resolver(urlconf).resolve(path)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 218, in resolve
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     sub_match = pattern.resolve(new_path)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 125, in resolve
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     return self.callback, args, kwargs
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 131, in _get_callback
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     self._callback = get_callable(self._callback_str)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/utils/functional.py", line 130, in wrapper
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     result = func(*args)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/core/urlresolvers.py", line 58, in get_callable
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     lookup_view = getattr(import_module(mod_name), func_name)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/usr/local/lib/python2.6/dist-packages/django/utils/importlib.py", line 35, in import_module
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     __import__(name)
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "/home/haksoo/django-projects/sensorsafe/datastore/views.py", line 26, in <module>
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     db = pymongo.Connection()['sensorsafe_database']
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "build/bdist.linux-x86_64/egg/pymongo/connection.py", line 305, in __init__
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     self.__find_master()
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]   File "build/bdist.linux-x86_64/egg/pymongo/connection.py", line 509, in __find_master
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210]     raise AutoReconnect("could not find master/primary")
+[Mon Aug 29 13:02:11 2011] [error] [client 128.97.244.210] AutoReconnect: could not find master/primary
