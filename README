@@ -1,5 +1,23 @@
-SensorSafe Project
+SensorSafe Project: Remote Data Store (haksoo@cs.ucla.edu)
 
-Remote Data Store 
+We use Apache webserver with Django web framework w/ sqlite3 + mongoDB backend.
+(sqlite3: for small stuff e.g. userinfo, mongodb: large stuff e.g. sensor data)
 
-Django + Apache + MongoDB
++ Why sqlite3 + mongoDB?
+
+  1. Performance
+    So we use mongoDB for storing large amount of data only.
+    -> Our application: sensor stream data at high sample rate.
+
+    mongoDB is good for write-intensive application.
+
+  2. Clean Code
+    But we still want to get the most out of Django's backend DB integration, e.g. user admin, so we use sqlite3.
+    Also, we have fairly complex processing of "JSON" privacy rules, so it was important that they can be easily modified to mongoDB's "JSON" query language in order to write cleaner code.
+
++ Why Django?
+  Better S/W engineering: MVC, Python. 
+  Although it might be slow but our performance mostly depends on sensor data and rule processing.
+
++ Why Apache?
+  Come on, this is de-facto standard web server!
