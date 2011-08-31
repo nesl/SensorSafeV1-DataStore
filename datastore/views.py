@@ -327,7 +327,9 @@ def modify_waveseg(waveseg, modify_rule, first_timestamp):
 	if 'timestamp_resolution' in modify_rule:
 		if not modify_rule['timestamp_resolution'] == 'dontmodify':
 			timestamp = time.localtime(waveseg['timestamp'])
+			# make timestamp relative time
 			waveseg['timestamp'] -= first_timestamp
+			# add 'time_info' field and store timestamp in specified time resolution
 			if modify_rule['timestamp_resolution'] == 'hour':
 				waveseg['time_info'] = time.strftime('%H:00, %m/%d/%Y', timestamp)
 			elif modify_rule['timestamp_resolution'] == 'day':
@@ -563,12 +565,12 @@ def query(request):
 		userinfo = UserProfile.objects.get(apiKey__exact = request.POST['apikey'])
 	except ObjectDoesNotExist:
 		isConsumer = True
-	
+
+	# check identity of querier
 	if not isConsumer:
 		username = userinfo.userID.username
 	else:
-
-		# find who is this on broker.
+		# this is consumer.. find out who this is on broker.
 		try:
 			params = urllib.urlencode({
 				'apikey': request.POST['apikey'], 
@@ -583,73 +585,83 @@ def query(request):
 			conn.close()
 		except Exception as detail:
 			log('Error: ' + str(detail))
-	
+
 		if response.status != 200:
 			return HttpResponseBadRequest(json.dumps({'error': 'Error from broker: ' + reply}))
 		
+		# check if this querier specifies queriee.
 		if not 'contributor' in request.POST:
 			return HttpResponseBadRequest("No 'contributor' in post data")
 		username = request.POST['contributor']
 
 		# TODO: check if this username exist
 
+		# save querier's name
 		consumer = reply
 
+	# get queriee's db collection
 	message = json.loads(request.POST['data'])
 	
 	#collection = db[username]
 	#collection = db[username + '_test200']
 	#collection = db[username + '_test200_opt']
-
 	collection = db[username + '_testdata_opt']
 	#collection = db[username + '_testdata_opt']
-	
 	#collection = db[username + '_test_10000']
 	#collection = db[username + '_test_1000_opt']
 	#collection = db['result']
 	#collection.ensure_index([('location', pymongo.GEO2D)])
 
+	# support for performance benchmarks
 	if 'test' in message:
 		if message['test'] == 'opt':
 			collection = db[username + '_testdata_opt']
 		else:
 			collection = db[username + '_testdata']
 
+	# yes... ensure index on the collection (w/o it, slow..) =]
 	collection.ensure_index('_id')
 
 	log('########### NEW QUERY ##############')
 	log(message)
 
+	# let's do privacy filtering.
 	cursor = None
 	waveseg_pre_temp_collection_name = None
 	temp_collection_name = None
 	isQueryOptions = isExistQueryOptions(message)
 	#isQueryOptions = True
 
-	# filter by rules...
+	# when the querier is data consumer
 	if isConsumer: 	
 		
-		# find rules apply to current consumer
+		# find rules that apply to this consumer
 		rules = db[username + '_rules']
 		rule_cursor = rules.find({ '$or': [ { 'consumer': None }, { 'consumer': consumer } ] }, { '_id': 0 })
 
-		# if rule exists
-		if rule_cursor.count() > 0:
-
+		# if there are no rules for this consumer
+		if rule_cursor.count() <= 0:
+			return HttpResponse('[]')
+		
+		# if rules exists
+		else:
+			
+			# support for benchmarks
 			starttime = time.time()
 		
 			# waveseg preprocess for time queries	
+			# Note: this is needed only for time queris, and this checking is done in the function because we also need to check if any rules contain time conditions.
 			result, waveseg_pre_temp_collection_name = waveseg_preprocess(username, collection, message, rules, consumer)
 			if result:
 				collection = db[waveseg_pre_temp_collection_name]
 
+			# support for benchmarks
 			elap_time = time.time() - starttime
 			log('waveseg preprocess time: ' + str(elap_time))
 			perform_test.append(elap_time)
-
 			starttime = time.time()
 			
-			# first perform query
+			# first, perform the query and get unfiltered data.
 			if 'query' in message and message['query']:
 				if 'location_label' in message['query']:
 					if not process_location_label(message['query'], username):
@@ -661,6 +673,7 @@ def query(request):
 			else:
 				query_result = set(collection.find().distinct('_id'))
 
+			# support for benchmarks
 			elap_time = time.time() - starttime
 			log('original query processing time: ' + str(elap_time))
 			perform_test.append(elap_time)
@@ -668,26 +681,29 @@ def query(request):
 
 			starttime = time.time()
 
-			# process the rules.
+			# alright, let's apply the rules.
 			allow_result = []
 			deny_result = []
 			modify_result = []
+
+			# since we have multiple rules.
 			for rule in rule_cursor:
 				if 'consumer' in rule:
 					del rule['consumer']
 				if 'rule_name' in rule:
 					del rule['rule_name']
 
-				# convert rule to valid query object...
+				# convert a rule to a valid query object...
 				# log('before: ' + str(rule))
 				if 'location_label' in rule:
 					if not process_location_label(rule, username):
 						return HttpResponseBadRequest("Error from process_location_label")
 				if 'repeat_time' in rule:
 					if not process_repeat_time(rule, collection):
-						#return HttpResponseBadRequest("There is no data")
+						#return HttpResponseBadRequest("There is no data") <- yes, this is the reason we continue.
 						continue
 
+				# get allow_result[], deny_result[], modify_result[]
 				if 'action' in rule:
 					if rule['action'] == 'allow': 
 						del rule['action']
@@ -706,33 +722,44 @@ def query(request):
 
 				# log('after: ' + str(rule))
 
-			# find intersection of query and rule results
+			# apply allow_result[] and deny_result[] to query_result[]
 			if allow_result:
 				allow_result = set.union(*allow_result)
 				query_result &= allow_result
 			if deny_result:
 				deny_result = set.union(*deny_result)
 				query_result -= deny_result
-	
+
+			# support for benchmarks
 			elap_time = time.time() - starttime
 			log('rule processing time: ' + str(elap_time))
 			perform_test.append(elap_time)
 
+			# after applying allow and deny rules, if nothing left...
 			if (len(query_result) <= 0):
 				return HttpResponse('[]')
 
+			# good. let's prepare things for processing query options.
 			if isQueryOptions:
+
 				# make new collection with allowed documents
+				# create a new collection
 				temp_collection_name = 'temp_' + hashlib.sha1(str(random.random())).hexdigest()
 				new_collection = db[temp_collection_name]
 
+				# support for benchmarks
 				starttime = time.time()
+
+				# insert the query result into the new collection
 				for id in query_result:
 					new_collection.insert(collection.find_one(id))
+				
+				# support for benchmarks
 				elap_time = time.time() - starttime
 				log('insert operation: ' + str(elap_time))
 				perform_test.append(elap_time)
 
+				# replace current collection.
 				collection = new_collection
 
 				#starttime = time.time()
@@ -740,13 +767,26 @@ def query(request):
 				#	collection.find_one(id)
 				#log('find_one() operation:' + str(time.time() - starttime))
 				
-				# process modify
+				# process modify_rules[]
+				#
+				# TODO: more performance optimization.
+				# we can postpone this to the data retrieval time 
+				# (so we can minimize collection.save(), which requires disk access) when...
+				#
+				# if no timestamp_resolution:
+				#		postpone.
+				# else if selection leaves timestamp, distinct leaves timestamp, "at" != 0:
+				#		postpone
+				# else
+				#		do it here.
+				#
+				# --> TODO:review this.
 				if len(modify_result) > 0:
 					starttime = time.time()
 					process_modify_rules(modify_result, collection)
 					log('modify rules operation: ' + str(time.time() - starttime))
 
-				# process select
+				# process field selection
 				if not 'select' in message:
 					cursor = collection.find(None, {'_id': 0})
 				else:
@@ -756,11 +796,7 @@ def query(request):
 				
 				log('after filtering: ' + str(cursor.count()))
 
-		# when there are no rules for this consumer
-		else:
-			return HttpResponse('[]')
-
-	# when it is owner.
+	# when the querier is data contributor of this server
 	else:
 
 		starttime = time.time()
@@ -774,6 +810,7 @@ def query(request):
 
 		starttime = time.time()
 
+		# process field selection
 		if not 'select' in message:
 			if 'query' in message and message['query']:
 				if 'location_label' in message['query']:
@@ -803,8 +840,10 @@ def query(request):
 	
 		log('process query and getting cursor: ' + str(time.time() - starttime))
 
+
+	# process more query options...
 	if isQueryOptions:
-		# perform query options
+		
 		if 'sort' in message and message['sort']:
 			for k, v in message['sort'].iteritems():
 				collection.ensure_index(k);
@@ -816,6 +855,7 @@ def query(request):
 		if 'distinct' in message and message['distinct']:
 			cursor = cursor.distinct(message['distinct'])
 
+		# data retrieval
 		if 'at' in message and message['at']:
 			if cursor.count() <= 0:
 				return HttpResponseBadRequest(json.dumps({'error': "There are no data"}))
@@ -827,32 +867,48 @@ def query(request):
 			else:
 				data = cursor[message['at']]
 		else:
+			# support for benchmarks
 			starttime = time.time()
+
+			# retrieve
 			data = []
 			for obj in cursor:
 				data.append(obj)
+
+			# support for benchmarks
 			elap_time = time.time() - starttime
 			log('retrieve operation: ' + str(elap_time))
 			perform_test.append(elap_time)
 
+		# clean up temp collection
 		if temp_collection_name:
 			db.drop_collection(temp_collection_name)
 
 	# no query options
 	else:
-
+		
 		if not isConsumer:
+			# support for benchmakrs
 			starttime = time.time()
+
+			# retreive data object
 			data = []
 			for obj in cursor:
 				data.append(obj)
 			log('retrieve operation: ' + str(time.time() - starttime))
+
 		else:
+			
 			cursor = collection.find()
 			log('after filtering: ' + str(len(query_result)))
+			
+			# support for benchmarks
 			starttime = time.time()
+			
 			data = []
 			first_timestamp = cursor.sort('timestamp', pymongo.ASCENDING)[0]['timestamp']	
+			
+			# retreive data object and perform modify rules "on the fly".
 			for id in query_result:
 				obj = collection.find_one(id)
 				del obj['_id']
@@ -861,21 +917,28 @@ def query(request):
 						modify_waveseg(obj, modify_rule, first_timestamp)
 				data.append(obj)
 
+			# support for benchmarks
 			elap_time = time.time() - starttime
 			log('retrieve & modify operation: ' + str(elap_time))
 			perform_test.append(elap_time)
 
+
+	# support for benchmarks
 	starttime = time.time()
-	
+
+	# alright, we are almost done. let's json-encode it.
 	json_data = json.dumps(data)
 
+	# support for benchmarks
 	elap_time = time.time() - starttime
 	log('json encoding time: ' + str(elap_time))
 	perform_test.append(elap_time)
 
+	# clean up temp collection of waveseg preprocessing
 	if waveseg_pre_temp_collection_name != None:
 		db.drop_collection(waveseg_pre_temp_collection_name)
 
+	# support for benchmarks.
 	if not 'test' in message:
 		return HttpResponse(json_data)
 	else:

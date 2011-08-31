@@ -8,7 +8,6 @@ SimpleTest	tests.py	/^class SimpleTest(TestCase):$/;"	c
 UserProfile	models.py	/^class UserProfile(models.Model):$/;"	c
 UserRegistrationForm	forms.py	/^class UserRegistrationForm(forms.Form):$/;"	c
 __unicode__	models.py	/^	def __unicode__(self):      $/;"	m	class:UserProfile	file:
-check_modify	views.py	/^def check_modify(check_item, rule):$/;"	f
 check_post_request	views.py	/^def check_post_request(postdata):$/;"	f
 check_post_request_apikey	views.py	/^def check_post_request_apikey(postdata):$/;"	f
 deleterules	views.py	/^def deleterules(request):$/;"	f
@@ -18,8 +17,9 @@ getrules	views.py	/^def getrules(request):$/;"	f
 isExistQueryOptions	views.py	/^def isExistQueryOptions(message):$/;"	f
 is_allow_condition_match	views.py	/^def is_allow_condition_match(check_item, rule):$/;"	f
 is_deny_condition_match	views.py	/^def is_deny_condition_match(check_item, rule):$/;"	f
-is_time_overlap	views.py	/^def is_time_overlap(time_a, time_b):$/;"	f
-is_time_subset	views.py	/^def is_time_subset(time_a, time_b):$/;"	f
+is_modify_ok	views.py	/^def is_modify_ok(check_item, rule):$/;"	f
+is_time_overlap	views.py	/^def is_time_overlap(cond, rule):$/;"	f
+is_time_subset	views.py	/^def is_time_subset(cond, rule):$/;"	f
 json_dump_pretty_html	views.py	/^def json_dump_pretty_html(data):$/;"	f
 locationlabel	views.py	/^def locationlabel(request):$/;"	f
 log	views.py	/^def log(object):$/;"	f
@@ -33,6 +33,7 @@ process_modify_rules	views.py	/^def process_modify_rules(modify_result, collecti
 process_repeat_time	views.py	/^def process_repeat_time(query, collection):$/;"	f
 profile	views.py	/^def profile(request):$/;"	f
 query	views.py	/^def query(request):$/;"	f
+rank	views.py	/^def rank(str):$/;"	f
 reduce_address	views.py	/^def reduce_address(address_str, level):$/;"	f
 register	views.py	/^def register(request, url=None):$/;"	f
 search_rules	views.py	/^def search_rules(request):$/;"	f
@@ -41,3 +42,4 @@ test	views.py	/^def test(request):$/;"	f
 test_basic_addition	tests.py	/^    def test_basic_addition(self):$/;"	m	class:SimpleTest
 upload	views.py	/^def upload(request):$/;"	f
 uploadrules	views.py	/^def uploadrules(request):$/;"	f
+waveseg_preprocess	views.py	/^def waveseg_preprocess(username, collection, message, rules, consumer):$/;"	f

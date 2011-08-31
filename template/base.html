@@ -1,12 +1,21 @@
 <html>
 <head>
-<title>{% block title %}SensorSafe: Data Store (beta){% endblock %}</title>
+<title>{% block title %}SensorSafe{% endblock %}</title>
 {% block head %}{% endblock %}
 </head>
 
 <body>
 <font face="arial">
-<font size="5"><b>SensorSafe: Data Store</b> <font size="3">(beta)</font></font><br/>
+
+<table><tr>
+<td>
+<img width="40" height="40" src="http://fieldstream.nesl.ucla.edu/images/sensorsafe-icon.png">
+</td>
+<td>
+<font size="5"><b>SensorSafe: Data Store</b> <font size="3">(beta)</font></font>
+</td>
+</tr></table>
+
 {% block login %}
 	{% if user.is_authenticated %}
 		<p>Welcome {{ user.username }}! <a href="/profile/">My Profile</a> <a href="/logout/">Sign out</a></p>
