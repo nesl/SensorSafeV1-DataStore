@@ -12,11 +12,12 @@ We use Apache webserver with Django web framework w/ sqlite3 + mongoDB backend.
     mongoDB is good for write-intensive application.
 
   2. Clean Code
-    But we still want to get the most of out django's backend DB integration, e.g. user admin, so we use sqlite3.
-    Also, we have fairly complex combination of JSON privacy rules, and they can be easily modified to mongoDB's JSON query language. 
+    But we still want to get the most out of Django's backend DB integration, e.g. user admin, so we use sqlite3.
+    Also, we have fairly complex processing of "JSON" privacy rules, so it was important that they can be easily modified to mongoDB's "JSON" query language in order to write cleaner code.
 
 + Why Django?
-  Its MVCC model is awesome.
+  Better S/W engineering: MVC, Python. 
+  Although it might be slow but our performance mostly depends on sensor data and rule processing.
 
 + Why Apache?
   Come on, this is de-facto standard web server!
