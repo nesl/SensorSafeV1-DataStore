@@ -1,6 +1,6 @@
 SensorSafe Project: Remote Data Store (haksoo@cs.ucla.edu)
 
-Broker repository: https://github.com/FieldStream/SensorSafe
+Broker repository: https://github.com/FieldStream/SensorSafeBroker
 
 We use Apache webserver with Django web framework w/ sqlite3 + mongoDB backend.
 (sqlite3: for small stuff e.g. userinfo, mongodb: large stuff e.g. sensor data)
