@@ -1,5 +1,5 @@
 # Django project ignores
-log
+logs
 *.pyc
 
 # Eclipse Android project ignores
