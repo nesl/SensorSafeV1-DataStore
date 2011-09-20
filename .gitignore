@@ -1,6 +1,7 @@
 # Django project ignores
 logs
 *.pyc
+*.swp
 
 # Eclipse Android project ignores
 bin
