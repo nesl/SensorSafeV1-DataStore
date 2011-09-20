@@ -92,7 +92,10 @@ def upload(request):
 
 
 def log(object):
-	print >> sys.stderr, str(object)
+	if type(object) is str:
+		print >> sys.stderr, object
+	else:
+		print >> sys.stderr, str(object)
 	sys.stderr.flush()
 
 
@@ -262,14 +265,14 @@ def process_repeat_time(query, collection):
 
 def process_location_label(query, username):
 	label_col = db[username+'_location_labels']
-	if not '$or' in query:
-		query['$or'] = []
+	if not '$and' in query:
+		query['$and'] = []
 	for label in query['location_label']:
 		range = label_col.find_one({ 'label': label }, { 'label': 0, '_id': 0 })
 		if range is not None:
-			query['$or'].append(range)
-	if not query['$or']:
-		del query['$or']
+			query['$and'].append(range)
+	if not query['$and']:
+		del query['$and']
 	del query['location_label']
 
 	return True
@@ -548,9 +551,12 @@ def waveseg_preprocess(username, collection, message, rules, consumer):
 	return True, temp_collection_name
 
 
-def query(request):
-	perform_test = []
 
+
+def query(request):
+	global perform_test
+	perform_test = []
+	
 	if request.method != 'POST':
 		return HttpResponseBadRequest('Not POST request')
 
@@ -567,6 +573,7 @@ def query(request):
 		isConsumer = True
 
 	# check identity of querier
+	consumer = None
 	if not isConsumer:
 		username = userinfo.userID.username
 	else:
@@ -623,7 +630,20 @@ def query(request):
 	collection.ensure_index('_id')
 
 	log('########### NEW QUERY ##############')
-	log(message)
+	log('query: ' + str(message))
+
+	return query_set_operation(request, message, isConsumer, consumer,  username, collection)
+
+
+
+
+def query_and_operation(request):
+	global perform_test
+
+
+
+def query_set_operation(request, message, isConsumer, consumer, username, collection):
+	global perform_test
 
 	# let's do privacy filtering.
 	cursor = None
@@ -641,7 +661,7 @@ def query(request):
 
 		# if there are no rules for this consumer
 		if rule_cursor.count() <= 0:
-			return HttpResponse('[]')
+			return HttpResponse('["No privacy rules for this consumer"]')
 		
 		# if rules exists
 		else:
@@ -687,7 +707,10 @@ def query(request):
 			modify_result = []
 
 			# since we have multiple rules.
+			merged_query = { '$and': [ message['query'] ], '$nor': [] }
 			for rule in rule_cursor:
+				log('rule: ' + str(rule))
+
 				if 'consumer' in rule:
 					del rule['consumer']
 				if 'rule_name' in rule:
@@ -697,7 +720,7 @@ def query(request):
 				# log('before: ' + str(rule))
 				if 'location_label' in rule:
 					if not process_location_label(rule, username):
-						return HttpResponseBadRequest("Error from process_location_label")
+						return HttpResponseBadRequest('["Error from process_location_label()"]')
 				if 'repeat_time' in rule:
 					if not process_repeat_time(rule, collection):
 						#return HttpResponseBadRequest("There is no data") <- yes, this is the reason we continue.
@@ -708,19 +731,44 @@ def query(request):
 					if rule['action'] == 'allow': 
 						del rule['action']
 						allow_result.append(set(collection.find(rule).distinct('_id')))
+						
+						# Filtering w/ query condition merging
+						merged_query['$and'].append(rule)
+
 					elif rule['action'] == 'modify':
 						modify_rule = rule['modify']
 						del rule['modify']
 						del rule['action']
 						modify_ids = set(collection.find(rule).distinct('_id'))
 						modify_result.append((modify_ids, modify_rule))
+
 					else:
 						del rule['action']
 						deny_result.append(set(collection.find(rule).distinct('_id')))
+						
+						# Filtering w/ query condition merging
+						merged_query['$nor'].append(rule)
+
 				else:
 					allow_result.append(set(collection.find(rule).distinct('_id')))
 
 				# log('after: ' + str(rule))
+
+			# Filtering w/ query condition merging
+			log('### Testing filtering w/ query condition merging ###')
+			if not merged_query['$nor']:
+				del merged_query['$nor']
+			if not merged_query['$and']:
+				del merged_query['$and']
+			if not merged_query:
+				return HttpREsponseBadRequest('["Error: empty merged_query dictionary?"]')
+			log(merged_query)
+			test_cursor = collection.find(merged_query).count()
+			log(test_cursor)
+			#for o in cursor:
+			#	log(o['_id'])
+			log('###########################')
+
 
 			# apply allow_result[] and deny_result[] to query_result[]
 			if allow_result:
@@ -732,12 +780,12 @@ def query(request):
 
 			# support for benchmarks
 			elap_time = time.time() - starttime
-			log('rule processing time: ' + str(elap_time))
+			log('rule processing (set operation) time: ' + str(elap_time))
 			perform_test.append(elap_time)
 
 			# after applying allow and deny rules, if nothing left...
 			if (len(query_result) <= 0):
-				return HttpResponse('[]')
+				return HttpResponse('["No data left after privacy rule filtering..."]')
 
 			# good. let's prepare things for processing query options.
 			if isQueryOptions:

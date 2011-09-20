@@ -33,6 +33,8 @@ process_modify_rules	views.py	/^def process_modify_rules(modify_result, collecti
 process_repeat_time	views.py	/^def process_repeat_time(query, collection):$/;"	f
 profile	views.py	/^def profile(request):$/;"	f
 query	views.py	/^def query(request):$/;"	f
+query_and_operation	views.py	/^def query_and_operation(request):$/;"	f
+query_set_operation	views.py	/^def query_set_operation(request, message, isConsumer, consumer, username, collection):$/;"	f
 rank	views.py	/^def rank(str):$/;"	f
 reduce_address	views.py	/^def reduce_address(address_str, level):$/;"	f
 register	views.py	/^def register(request, url=None):$/;"	f
