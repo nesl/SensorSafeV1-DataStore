@@ -26,15 +26,15 @@ log	views.py	/^def log(object):$/;"	f
 logout_view	views.py	/^def logout_view(request):$/;"	f
 mean	views.py	/^def mean(l):$/;"	f
 modify_waveseg	views.py	/^def modify_waveseg(waveseg, modify_rule, first_timestamp):$/;"	f
+pre_query_waveseg_processing	views.py	/^def pre_query_waveseg_processing(username, collection, message, rules, consumer):$/;"	f
 print_error_context	views.py	/^def print_error_context():$/;"	f
 privacyrules	views.py	/^def privacyrules(request):$/;"	f
 process_location_label	views.py	/^def process_location_label(query, username):$/;"	f
-process_modify_rules	views.py	/^def process_modify_rules(modify_result, collection):$/;"	f
+process_modify_rules_and_save	views.py	/^def process_modify_rules_and_save(modify_result, isSave = True, collection = None, data = None, cursor = None):$/;"	f
 process_repeat_time	views.py	/^def process_repeat_time(query, collection):$/;"	f
 profile	views.py	/^def profile(request):$/;"	f
 query	views.py	/^def query(request):$/;"	f
-query_and_operation	views.py	/^def query_and_operation(request):$/;"	f
-query_set_operation	views.py	/^def query_set_operation(request, message, isConsumer, consumer, username, collection):$/;"	f
+query_process_bottom_half	views.py	/^def query_process_bottom_half(request, message, isConsumer, consumer, username, collection):$/;"	f
 rank	views.py	/^def rank(str):$/;"	f
 reduce_address	views.py	/^def reduce_address(address_str, level):$/;"	f
 register	views.py	/^def register(request, url=None):$/;"	f
@@ -44,4 +44,3 @@ test	views.py	/^def test(request):$/;"	f
 test_basic_addition	tests.py	/^    def test_basic_addition(self):$/;"	m	class:SimpleTest
 upload	views.py	/^def upload(request):$/;"	f
 uploadrules	views.py	/^def uploadrules(request):$/;"	f
-waveseg_preprocess	views.py	/^def waveseg_preprocess(username, collection, message, rules, consumer):$/;"	f

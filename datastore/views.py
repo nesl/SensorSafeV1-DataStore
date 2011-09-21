@@ -19,6 +19,23 @@ from threading import Lock
 from copy import copy, deepcopy
 import math
 
+# flags for benchmark test
+
+FILTER_BY_MERGING_CONDITIONS = True # DONE!
+FILTER_BY_SET_OPERATIONS = not FILTER_BY_MERGING_CONDITIONS
+
+ON_THE_FLY_WAVESEG_MODIFICATION = False
+WAVESEG_MODIFY_AND_SAVE = not ON_THE_FLY_WAVESEG_MODIFICATION
+
+ON_THE_FLY_WAVESEG_PROCESSING = True
+PRE_QUERY_WAVESEG_PROCESSING = not ON_THE_FLY_WAVESEG_PROCESSING
+
+POST_UPLOAD_WAVESEG_PROCESSING = False
+NO_POST_UPLOAD_WAVESEG_PROCESSING = not POST_UPLOAD_WAVESEG_PROCESSING
+POST_UPLOAD_WAVESEG_PROCESSING_ADAPTIVE = False
+
+
+
 BROKER_ADDRESS = 'fieldstream.nesl.ucla.edu'
 GOOGLE_APIKEY = 'ABQIAAAA-BHV3Z55zCdo4z_ley123xT2yXp_ZAY8_ufC3CFXhHIE1NvwkxTGit_DA3cmLDETSlrEJ5l9J2xRaQ'
 
@@ -416,16 +433,47 @@ def modify_waveseg(waveseg, modify_rule, first_timestamp):
 
 
 
-def process_modify_rules(modify_result, collection):
-	first_timestamp = collection.find().sort('timestamp', pymongo.ASCENDING)[0]['timestamp']	
-	for target_ids, modify_rule in modify_result:
-		for id in target_ids:
-			waveseg = collection.find_one(id)
-			if waveseg:
-				modify_waveseg(waveseg, modify_rule, first_timestamp)
-				#collection.update({ '_id': id }, { '$set': { 'location': location } })
-				collection.save(waveseg)
+# isSave = False: on-the-fly
+def process_modify_rules_and_save(modify_result, isSave = True, collection = None, data = None, cursor = None):
+	if not modify_result and not isSave:
+		for waveseg in cursor:
+			del waveseg['_id']
+			data.append(waveseg)
 
+	elif not modify_result and isSave:
+		# don't touch the collection, it will be process after this function
+		return
+
+	else: # there is modify_result
+		first_timestamp = collection.find().sort('timestamp', pymongo.ASCENDING)[0]['timestamp']	
+
+		if not isSave:
+			id_set = ()
+
+		for target_ids, modify_rule in modify_result:
+			for id in target_ids:
+				if not isSave:
+					id_set.insert(id)
+
+				waveseg = collection.find_one(id)
+				if waveseg:
+					modify_waveseg(waveseg, modify_rule, first_timestamp)
+
+					if isSave:
+						#collection.update({ '_id': id }, { '$set': { 'location': location } })
+						collection.save(waveseg)
+					else:
+						del waveseg['_id']
+						data.append(waveseg)
+
+		if not isSave:
+			# We also need to add unmodified wavesegs to data
+			for waveseg in cursor:
+				if not waveseg['_id'] in id_list:
+					del waveseg['_id']
+					data.append(waveseg)
+
+			
 
 
 def isExistQueryOptions(message):
@@ -433,8 +481,9 @@ def isExistQueryOptions(message):
 					
 
 
-def waveseg_preprocess(username, collection, message, rules, consumer):
-	#log('--- start of waveseg_preprocess() ---')
+# TODO: bugs in processing time. add support for location range
+def pre_query_waveseg_processing(username, collection, message, rules, consumer):
+	#log('--- start of pre_query_waveseg_processing() ---')
 
 	time_boundaries = []
 
@@ -547,7 +596,7 @@ def waveseg_preprocess(username, collection, message, rules, consumer):
 
 	#log('new_collection count: ' + str(new_collection.find().count()))
 
-	#log('--- end of waveseg_preprocess() ---')
+	#log('--- end of pre_query_waveseg_processing() ---')
 	return True, temp_collection_name
 
 
@@ -555,6 +604,9 @@ def waveseg_preprocess(username, collection, message, rules, consumer):
 
 def query(request):
 	global perform_test
+
+	# Prepare for query processing.
+
 	perform_test = []
 	
 	if request.method != 'POST':
@@ -608,7 +660,8 @@ def query(request):
 
 	# get queriee's db collection
 	message = json.loads(request.POST['data'])
-	
+
+	# TODO: clean up this!
 	#collection = db[username]
 	#collection = db[username + '_test200']
 	#collection = db[username + '_test200_opt']
@@ -626,24 +679,23 @@ def query(request):
 		else:
 			collection = db[username + '_testdata']
 
-	# yes... ensure index on the collection (w/o it, slow..) =]
+	# yes... ensure index on the collection (w/o it, slow..)
 	collection.ensure_index('_id')
+
+	return query_process_bottom_half(request, message, isConsumer, consumer,  username, collection)
+
+
+
+
+
+
+def query_process_bottom_half(request, message, isConsumer, consumer, username, collection):
+	global perform_test
+	
+	# Actual query processing. Fun part is here!
 
 	log('########### NEW QUERY ##############')
 	log('query: ' + str(message))
-
-	return query_set_operation(request, message, isConsumer, consumer,  username, collection)
-
-
-
-
-def query_and_operation(request):
-	global perform_test
-
-
-
-def query_set_operation(request, message, isConsumer, consumer, username, collection):
-	global perform_test
 
 	# let's do privacy filtering.
 	cursor = None
@@ -669,45 +721,51 @@ def query_set_operation(request, message, isConsumer, consumer, username, collec
 			# support for benchmarks
 			starttime = time.time()
 		
-			# waveseg preprocess for time queries	
-			# Note: this is needed only for time queris, and this checking is done in the function because we also need to check if any rules contain time conditions.
-			result, waveseg_pre_temp_collection_name = waveseg_preprocess(username, collection, message, rules, consumer)
-			if result:
-				collection = db[waveseg_pre_temp_collection_name]
+			# waveseg processing for range queries	
+			# Note: this is needed only for range queries, and this checking is done in the function because we also need to check if any rules contain range conditions.
+			if PRE_QUERY_WAVESEG_PROCESSING:
+				result, waveseg_pre_temp_collection_name = pre_query_waveseg_processing(username, collection, message, rules, consumer)
+				if result:
+					collection = db[waveseg_pre_temp_collection_name]
 
 			# support for benchmarks
 			elap_time = time.time() - starttime
 			log('waveseg preprocess time: ' + str(elap_time))
 			perform_test.append(elap_time)
 			starttime = time.time()
-			
-			# first, perform the query and get unfiltered data.
-			if 'query' in message and message['query']:
-				if 'location_label' in message['query']:
-					if not process_location_label(message['query'], username):
-						return HttpResponseBadRequest("Error from process_location_label")
-				if 'repeat_time' in message['query']:
-					if not process_repeat_time(message['query'], collection):
-						return HttpResponseBadRequest("There is no data")
-				query_result = set(collection.find(message['query']).distinct('_id'))
-			else:
-				query_result = set(collection.find().distinct('_id'))
+		
+			if FILTER_BY_SET_OPERATIONS:
+				# first, perform the query and get unfiltered data.
+				if 'query' in message and message['query']:
+					if 'location_label' in message['query']:
+						if not process_location_label(message['query'], username):
+							return HttpResponseBadRequest("Error from process_location_label")
+					if 'repeat_time' in message['query']:
+						if not process_repeat_time(message['query'], collection):
+							return HttpResponseBadRequest("There is no data")
+					query_result = set(collection.find(message['query']).distinct('_id'))
+				else:
+					query_result = set(collection.find().distinct('_id'))
 
 			# support for benchmarks
-			elap_time = time.time() - starttime
-			log('original query processing time: ' + str(elap_time))
-			perform_test.append(elap_time)
-			log('before filtering # of wavesegs: ' + str(len(query_result)))
+			#elap_time = time.time() - starttime
+			#log('original query processing time: ' + str(elap_time))
+			#perform_test.append(elap_time)
+			#log('before filtering # of wavesegs: ' + str(len(query_result)))
 
 			starttime = time.time()
 
-			# alright, let's apply the rules.
-			allow_result = []
-			deny_result = []
+			if FILTER_BY_SET_OPERATIONS:
+				# alright, let's apply the rules.
+				allow_result = []
+				deny_result = []
+			
 			modify_result = []
 
+			if FILTER_BY_MERGING_CONDITIONS:
+				merged_query = { '$and': [ message['query'] ], '$nor': [] }
+
 			# since we have multiple rules.
-			merged_query = { '$and': [ message['query'] ], '$nor': [] }
 			for rule in rule_cursor:
 				log('rule: ' + str(rule))
 
@@ -730,97 +788,112 @@ def query_set_operation(request, message, isConsumer, consumer, username, collec
 				if 'action' in rule:
 					if rule['action'] == 'allow': 
 						del rule['action']
-						allow_result.append(set(collection.find(rule).distinct('_id')))
-						
-						# Filtering w/ query condition merging
-						merged_query['$and'].append(rule)
+
+						if FILTER_BY_SET_OPERATIONS:
+							allow_result.append(set(collection.find(rule).distinct('_id')))
+				
+						if FILTER_BY_MERGING_CONDITIONS:
+							# Filtering w/ query condition merging
+							merged_query['$and'].append(rule)
 
 					elif rule['action'] == 'modify':
 						modify_rule = rule['modify']
 						del rule['modify']
 						del rule['action']
 						modify_ids = set(collection.find(rule).distinct('_id'))
+
+						# save list of wavesegs-to-be-modified.
 						modify_result.append((modify_ids, modify_rule))
 
-					else:
+					elif rule['action'] == 'deny':
 						del rule['action']
-						deny_result.append(set(collection.find(rule).distinct('_id')))
+
+						if FILTER_BY_SET_OPERATIONS:
+							deny_result.append(set(collection.find(rule).distinct('_id')))
 						
-						# Filtering w/ query condition merging
-						merged_query['$nor'].append(rule)
+						if FILTER_BY_MERGING_CONDITIONS:
+							# Filtering w/ query condition merging
+							merged_query['$nor'].append(rule)
+
+					else:
+						assert False # invalid rule['action']
 
 				else:
-					allow_result.append(set(collection.find(rule).distinct('_id')))
+					assert False # there is no rule['action']
 
 				# log('after: ' + str(rule))
 
-			# Filtering w/ query condition merging
-			log('### Testing filtering w/ query condition merging ###')
-			if not merged_query['$nor']:
-				del merged_query['$nor']
-			if not merged_query['$and']:
-				del merged_query['$and']
-			if not merged_query:
-				return HttpREsponseBadRequest('["Error: empty merged_query dictionary?"]')
-			log(merged_query)
-			test_cursor = collection.find(merged_query).count()
-			log(test_cursor)
-			#for o in cursor:
-			#	log(o['_id'])
-			log('###########################')
+			if FILTER_BY_MERGING_CONDITIONS:
+				# Filtering w/ query condition merging
+				log('### Testing filtering w/ query condition merging ###')
+				if not merged_query['$nor']:
+					del merged_query['$nor']
+				if not merged_query['$and']:
+					del merged_query['$and']
+				if not merged_query:
+					assert False # empty merged_query{}
+				log('merged_query = ' + str(merged_query))
+				# debug pupose
+				test_count = collection.find(merged_query).count()
+				log('find(merged_query).count() = ' + str(test_count))
+				#for o in cursor:
+				#	log(o['_id'])
+				log('###########################')
 
+			if FILTER_BY_SET_OPERATIONS:
+				# apply allow_result[] and deny_result[] to query_result[]
+				if allow_result:
+					allow_result = set.union(*allow_result)
+					query_result &= allow_result
+				if deny_result:
+					deny_result = set.union(*deny_result)
+					query_result -= deny_result
 
-			# apply allow_result[] and deny_result[] to query_result[]
-			if allow_result:
-				allow_result = set.union(*allow_result)
-				query_result &= allow_result
-			if deny_result:
-				deny_result = set.union(*deny_result)
-				query_result -= deny_result
-
-			# support for benchmarks
-			elap_time = time.time() - starttime
-			log('rule processing (set operation) time: ' + str(elap_time))
-			perform_test.append(elap_time)
-
-			# after applying allow and deny rules, if nothing left...
-			if (len(query_result) <= 0):
-				return HttpResponse('["No data left after privacy rule filtering..."]')
-
-			# good. let's prepare things for processing query options.
-			if isQueryOptions:
-
-				# make new collection with allowed documents
-				# create a new collection
-				temp_collection_name = 'temp_' + hashlib.sha1(str(random.random())).hexdigest()
-				new_collection = db[temp_collection_name]
-
-				# support for benchmarks
-				starttime = time.time()
-
-				# insert the query result into the new collection
-				for id in query_result:
-					new_collection.insert(collection.find_one(id))
-				
 				# support for benchmarks
 				elap_time = time.time() - starttime
-				log('insert operation: ' + str(elap_time))
+				log('rule processing (set operation) time: ' + str(elap_time))
 				perform_test.append(elap_time)
 
-				# replace current collection.
-				collection = new_collection
+				# after applying allow and deny rules, if nothing left...
+				if (len(query_result) <= 0):
+					return HttpResponse('["No data left after filtering..."]')
+
+			# Good. Process field selection for data consumer. Here we are going to process field selection first in line of processing query options. Further query options are processed in the 'if isQueryOptions' block down below. The only difference between in case of query by data consumer and contributor is this field selection processing. It's all because mongoDB supports field selection as an argument of find(). Further reasons are explained down below, too.
+			if isQueryOptions:
+
+				if FILTER_BY_SET_OPERATIONS:
+					# make new collection with allowed documents
+					# create a new collection
+					temp_collection_name = 'temp_' + hashlib.sha1(str(random.random())).hexdigest()
+					new_collection = db[temp_collection_name]
+
+					# support for benchmarks
+					starttime = time.time()
+
+					# insert the query result into the new collection
+					for id in query_result:
+						new_collection.insert(collection.find_one(id))
+					
+					# support for benchmarks
+					elap_time = time.time() - starttime
+					log('insert operation: ' + str(elap_time))
+					perform_test.append(elap_time)
+
+					# replace current collection.
+					collection = new_collection
 
 				#starttime = time.time()
 				#for id in query_result:
 				#	collection.find_one(id)
 				#log('find_one() operation:' + str(time.time() - starttime))
 				
-				# process modify_rules[]
+				# process modify_rules()
 				#
 				# TODO: more performance optimization.
 				# we can postpone this to the data retrieval time 
 				# (so we can minimize collection.save(), which requires disk access) when...
-				#
+				# 
+				# in modify_rule,
 				# if no timestamp_resolution:
 				#		postpone.
 				# else if selection leaves timestamp, distinct leaves timestamp, "at" != 0:
@@ -829,36 +902,56 @@ def query_set_operation(request, message, isConsumer, consumer, username, collec
 				#		do it here.
 				#
 				# --> TODO:review this.
+
+				# Do process_modify_rules here because of the field selection.
 				if len(modify_result) > 0:
 					starttime = time.time()
-					process_modify_rules(modify_result, collection)
+					process_modify_rules_and_save(modify_result, collection)
 					log('modify rules operation: ' + str(time.time() - starttime))
 
 				# process field selection
 				if not 'select' in message:
-					cursor = collection.find(None, {'_id': 0})
+					if FILTER_BY_SET_OPERATIONS:
+						cursor = collection.find(None, {'_id': 0}) # deselect _id field
+					if FILTER_BY_MERGING_CONDITIONS:
+						cursor = collection.find(merged_query, {'_id': 0}) # deselect _id field
 				else:
 					select = message['select']
-					select['_id'] = 0
-					cursor = collection.find(None, select)
-				
-				log('after filtering: ' + str(cursor.count()))
+					select['_id'] = 0 # deselect _id field
+					if FILTER_BY_SET_OPERATIONS:
+						cursor = collection.find(None, select)
+					if FILTER_BY_MERGING_CONDITIONS:
+						cursor = collection.find(merged_query, select)
+			
+			else: # no query options
+				# Here, we don't remove _id field because of the on-the-fly waveseg modification.
+				if FILTER_BY_SET_OPERATIONS:
+					cursor = collection.find() 
+				if FILTER_BY_MERGING_CONDITIONS:
+					cursor = collection.find(merged_query)
+			
+				if FILTER_BY_SET_OPERATIONS:
+					log('after filtering, len(query_result) = ' + str(len(query_result)))
+				if FILTER_BY_MERGING_CONDITIONS:
+					log('after filtering: cursor.count() = ' + str(cursor.count()))
 
 	# when the querier is data contributor of this server
 	else:
 
 		starttime = time.time()
 		
-		# waveseg preprocess for time queries
-		result, waveseg_pre_temp_collection_name = waveseg_preprocess(username, collection, message, None, None)
-		if result:
-			collection = db[waveseg_pre_temp_collection_name]
+		# waveseg processing for range queries
+		if PRE_QUERY_WAVESEG_PROCESSING:
+			result, waveseg_pre_temp_collection_name = pre_query_waveseg_processing(username, collection, message, None, None)
+
+			if result:
+				collection = db[waveseg_pre_temp_collection_name]
 		
 		log('waveseg preprocess time: ' + str(time.time() - starttime))
 
 		starttime = time.time()
 
-		# process field selection
+		# Process field selection for data contributor, this is done here instead of if isQueryOptions block because field selection in mongoDB is done with find() function. Advanced query options are done by additionally calling functions on the cursor returned by find().
 		if not 'select' in message:
 			if 'query' in message and message['query']:
 				if 'location_label' in message['query']:
@@ -889,7 +982,8 @@ def query_set_operation(request, message, isConsumer, consumer, username, collec
 		log('process query and getting cursor: ' + str(time.time() - starttime))
 
 
-	# process more query options...
+	# Common code for both data consumers and contributors.
+	# Process further query options...
 	if isQueryOptions:
 		
 		if 'sort' in message and message['sort']:
@@ -946,24 +1040,25 @@ def query_set_operation(request, message, isConsumer, consumer, username, collec
 			log('retrieve operation: ' + str(time.time() - starttime))
 
 		else:
-			
-			cursor = collection.find()
-			log('after filtering: ' + str(len(query_result)))
-			
+	
 			# support for benchmarks
 			starttime = time.time()
 			
 			data = []
-			first_timestamp = cursor.sort('timestamp', pymongo.ASCENDING)[0]['timestamp']	
+		
+			# retreive data object and perform modify rules "on-the-fly".
+			if FILTER_BY_SET_OPERATIONS:
+				first_timestamp = cursor.sort('timestamp', pymongo.ASCENDING)[0]['timestamp']	
+				for id in query_result:
+					obj = collection.find_one(id)
+					del obj['_id']
+					for modify_id, modify_rule in modify_result:
+						if id in modify_id:
+							modify_waveseg(obj, modify_rule, first_timestamp)
+					data.append(obj)
 			
-			# retreive data object and perform modify rules "on the fly".
-			for id in query_result:
-				obj = collection.find_one(id)
-				del obj['_id']
-				for modify_id, modify_rule in modify_result:
-					if id in modify_id:
-						modify_waveseg(obj, modify_rule, first_timestamp)
-				data.append(obj)
+			if FILTER_BY_MERGING_CONDITIONS:
+				process_modify_rules_and_save(modify_result, isSave = False, data = data, cursor = cursor)
 
 			# support for benchmarks
 			elap_time = time.time() - starttime
