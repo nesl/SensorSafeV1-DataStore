@@ -8,17 +8,22 @@ SimpleTest	tests.py	/^class SimpleTest(TestCase):$/;"	c
 UserProfile	models.py	/^class UserProfile(models.Model):$/;"	c
 UserRegistrationForm	forms.py	/^class UserRegistrationForm(forms.Form):$/;"	c
 __unicode__	models.py	/^	def __unicode__(self):      $/;"	m	class:UserProfile	file:
-_inner	views.py	/^		def _inner(*args, **kwargs):$/;"	f	function:hotshot_profile/_outer
-_outer	views.py	/^	def _outer(f):$/;"	f	function:hotshot_profile
+_inner	hotshotdecorator.py	/^		def _inner(*args, **kwargs):$/;"	f	function:hotshot_profile/_outer
+_outer	hotshotdecorator.py	/^	def _outer(f):$/;"	f	function:hotshot_profile
 check_post_request	views.py	/^def check_post_request(postdata):$/;"	f
 check_post_request_apikey	views.py	/^def check_post_request_apikey(postdata):$/;"	f
+clean_up_merged_query	privacyengine.py	/^def clean_up_merged_query(merged_query):$/;"	f
+condition_preprocessing	privacyengine.py	/^def condition_preprocessing(condition_object, username):$/;"	f
+create_temporary_collection	privacyengine.py	/^def create_temporary_collection(filtered_result, collection):$/;"	f
 deleterules	views.py	/^def deleterules(request):$/;"	f
 display	views.py	/^def display(request):$/;"	f
 foo	foo.py	/^def foo():$/;"	f
+get_allow_deny_modify_sets_or_merged_query	privacyengine.py	/^def get_allow_deny_modify_sets_or_merged_query(allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection):$/;"	f
 get_modify_list	views.py	/^def get_modify_list(search_cond):$/;"	f
+get_set_of_distinct_ids_from_query_result	privacyengine.py	/^def get_set_of_distinct_ids_from_query_result(message, collection, username):$/;"	f
 getrules	views.py	/^def getrules(request):$/;"	f
-hotshot_profile	views.py	/^def hotshot_profile(log_file):$/;"	f
-isExistQueryOptions	views.py	/^def isExistQueryOptions(message):$/;"	f
+hoo	foo.py	/^def hoo():$/;"	f
+hotshot_profile	hotshotdecorator.py	/^def hotshot_profile(log_file):$/;"	f
 is_allow_condition_match	views.py	/^def is_allow_condition_match(check_item, rule):$/;"	f
 is_deny_condition_match	views.py	/^def is_deny_condition_match(check_item, rule):$/;"	f
 is_modify_ok	views.py	/^def is_modify_ok(check_item, rule):$/;"	f
@@ -26,21 +31,23 @@ is_time_overlap	views.py	/^def is_time_overlap(cond, rule):$/;"	f
 is_time_subset	views.py	/^def is_time_subset(cond, rule):$/;"	f
 json_dump_pretty_html	views.py	/^def json_dump_pretty_html(data):$/;"	f
 locationlabel	views.py	/^def locationlabel(request):$/;"	f
-log	views.py	/^def log(object):$/;"	f
+log	log.py	/^def log(object):$/;"	f
 logout_view	views.py	/^def logout_view(request):$/;"	f
-mean	views.py	/^def mean(l):$/;"	f
-modify_waveseg	views.py	/^def modify_waveseg(waveseg, modify_rule, first_timestamp):$/;"	f
-pre_query_waveseg_processing	views.py	/^def pre_query_waveseg_processing(username, collection, message, rules, consumer):$/;"	f
+mean	privacyengine.py	/^def mean(l):$/;"	f
+modify_waveseg	privacyengine.py	/^def modify_waveseg(waveseg, modify_rule, first_timestamp):$/;"	f
+perform_set_operation	privacyengine.py	/^def perform_set_operation(query_result, allow_result, deny_result):$/;"	f
+pre_query_waveseg_processing	privacyengine.py	/^def pre_query_waveseg_processing(username, collection, message, rules, consumer):$/;"	f
 print_error_context	views.py	/^def print_error_context():$/;"	f
 privacyrules	views.py	/^def privacyrules(request):$/;"	f
-process_location_label	views.py	/^def process_location_label(query, username):$/;"	f
-process_modify_rules_and_save	views.py	/^def process_modify_rules_and_save(modify_result, isSave = True, collection = None, data = None, cursor = None):$/;"	f
-process_repeat_time	views.py	/^def process_repeat_time(query, collection):$/;"	f
+process	privacyengine.py	/^def process(dbConnection, request, message, isConsumer, consumer, username, collection):$/;"	f
+process_location_label	privacyengine.py	/^def process_location_label(query, username):$/;"	f
+process_modify_rules	privacyengine.py	/^def process_modify_rules(modify_result, collection, query_result = None, merged_query = None):$/;"	f
+process_modify_rules_on_the_fly	privacyengine.py	/^def process_modify_rules_on_the_fly(modify_result, data, collection = None, cursor = None, query_result = None):$/;"	f
+process_repeat_time	privacyengine.py	/^def process_repeat_time(query, collection):$/;"	f
 profile	views.py	/^def profile(request):$/;"	f
 query	views.py	/^def query(request):$/;"	f
-query_process_bottom_half	views.py	/^def query_process_bottom_half(request, message, isConsumer, consumer, username, collection):$/;"	f
 rank	views.py	/^def rank(str):$/;"	f
-reduce_address	views.py	/^def reduce_address(address_str, level):$/;"	f
+reduce_address	privacyengine.py	/^def reduce_address(address_str, level):$/;"	f
 register	views.py	/^def register(request, url=None):$/;"	f
 search_rules	views.py	/^def search_rules(request):$/;"	f
 status	views.py	/^def status(request):$/;"	f

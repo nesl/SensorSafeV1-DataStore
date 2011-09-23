@@ -18,6 +18,7 @@ from threading import Lock
 from copy import copy, deepcopy
 import math
 from log import log
+from hotshotdecorator import hotshot_profile
 
 import cjson
 import json
@@ -203,404 +204,13 @@ def register(request, url=None):
 
 
 
-def process_repeat_time(query, collection):
-	repeat_time = query['repeat_time']
-	del query['repeat_time']
 
-	if not 'time_range' in repeat_time:
-		cursor = collection.find(None, { 'timestamp': 1 }).sort('timestamp', pymongo.ASCENDING)
-		repeat_time['time_range'] = [ cursor[0]['timestamp'], cursor[cursor.count()-1]['timestamp'] ]
 
-	starttime = datetime.fromtimestamp(repeat_time['time_range'][0]/1000.0).replace(hour=0, minute=0, second=0, microsecond=0)
-	endtime = datetime.fromtimestamp(repeat_time['time_range'][1]/1000.0).replace(hour=0, minute=0, second=0, microsecond=0)
-	aday = timedelta(1)
-	aweek = timedelta(7)
-	endtime += aday
-
-	if 'hour_min' in repeat_time:
-		fromtime = datetime.strptime(repeat_time['hour_min'][0], '%I:%M%p')
-		totime = datetime.strptime(repeat_time['hour_min'][1], '%I:%M%p')
-
-		init_t1 = datetime(starttime.year, starttime.month, starttime.day, fromtime.hour, fromtime.minute, 0, 0, starttime.tzinfo)
-		init_t2 = datetime(starttime.year, starttime.month, starttime.day, totime.hour, totime.minute, 0, 0, starttime.tzinfo)
-
-		if not '$or' in query:
-			query['$or'] = []
-
-		for daystr in repeat_time['day']:
-			wday = time.strptime(daystr, '%a').tm_wday
-
-			t1 = init_t1
-			t2 = init_t2
-
-			while t1.weekday() != wday:
-				t1 += aday
-				t2 += aday
-
-			while t1 <= endtime and t2 <= endtime:
-				query['$or'].append( { 'timestamp': { '$gte': time.mktime(t1.timetuple())*1000, '$lte': time.mktime(t2.timetuple())*1000 } } )
-				t1 += aweek
-				t2 += aweek
-	else: # for All day
-		init_t1 = datetime(starttime.year, starttime.month, starttime.day, 0, 0, 0, 0, starttime.tzinfo)
-		init_t2 = datetime(starttime.year, starttime.month, starttime.day, 0, 0, 0, 0, starttime.tzinfo)
-		init_t2 += aday
-
-		if not '$or' in query:
-			query['$or'] = []
-
-		for daystr in repeat_time['day']:
-			wday = time.strptime(daystr, '%a').tm_wday
-
-			t1 = init_t1
-			t2 = init_t2
-
-			while t1.weekday() != wday:
-				t1 += aday
-				t2 += aday
-
-			while t1 <= endtime and t2 <= endtime:
-				query['$or'].append( { 'timestamp': { '$gte': time.mktime(t1.timetuple())*1000, '$lt': time.mktime(t2.timetuple())*1000 } } )
-				t1 += aweek
-				t2 += aweek
-
-	if not query['$or']:
-		# no data for this repeat_time
-		return False
-
-	log('in process: ' + str(query))
-	return True
-
-
-
-def process_location_label(query, username):
-	label_col = db[username+'_location_labels']
-	if not '$and' in query:
-		query['$and'] = []
-	for label in query['location_label']:
-		range = label_col.find_one({ 'label': label }, { 'label': 0, '_id': 0 })
-		if range is not None:
-			query['$and'].append(range)
-	if not query['$and']:
-		del query['$and']
-	del query['location_label']
-
-	return True
-
-
-
-def reduce_address(address_str, level):
-	address = address_str.rsplit(', ', 3)
-	city = str(address[1])
-	state = str(address[2].split(' ')[0])
-	zipcode = str(address[2].split(' ')[1])
-	country = str(address[3])
-
-	if level == 'street':
-		return address_str
-	elif level == 'zipcode':
-		return zipcode
-	elif level == 'city':
-		return city + ', ' + state + ', ' + country
-	elif level == 'state':
-		return state + ', ' + country
-	elif level == 'country':
-		return country
-
-
-
-def mean(l):
-	fnums = [float(x) for x in l]
-	return sum(fnums) / len(l)
-
-
-
-def modify_waveseg(waveseg, modify_rule, first_timestamp):
-	gc_collection = db['geocode_cache']
-
-	if 'location_resolution' in modify_rule:
-		if not modify_rule['location_resolution'] == 'dontmodify':
-			if not modify_rule['location_resolution'] == 'nolocation':
-				# find geocode
-				geocode = gc_collection.find_one({ 'location.latitude': waveseg['location']['latitude'], 'location.longitude': waveseg['location']['longitude'] })
-
-				if not geocode:
-					address = gmaps.latlng_to_address(waveseg['location']['latitude'], waveseg['location']['longitude'])
-					gc_collection.insert({ 'location': waveseg['location'], 'address': address })
-				else:
-					address = geocode['address']
-
-				location = reduce_address(address, modify_rule['location_resolution'])
-				waveseg['location'] = location
-
-			# no location
-			else:
-				del waveseg['location']
-	
-	if 'timestamp_resolution' in modify_rule:
-		if not modify_rule['timestamp_resolution'] == 'dontmodify':
-			timestamp = time.localtime(waveseg['timestamp'])
-			# make timestamp relative time
-			waveseg['timestamp'] -= first_timestamp
-			# add 'time_info' field and store timestamp in specified time resolution
-			if modify_rule['timestamp_resolution'] == 'hour':
-				waveseg['time_info'] = time.strftime('%H:00, %m/%d/%Y', timestamp)
-			elif modify_rule['timestamp_resolution'] == 'day':
-				waveseg['time_info'] = time.strftime('%m/%d/%Y', timestamp)
-			elif modify_rule['timestamp_resolution'] == 'month':
-				waveseg['time_info'] = time.strftime('%d/%Y', timestamp)
-			elif modify_rule['timestamp_resolution'] == 'year':
-				waveseg['time_info'] = time.strftime('%Y', timestamp)
-
-	if 'sample_rate' in modify_rule:
-		for sample_rate_rule in modify_rule['sample_rate']:
-			if type(waveseg['data_channel']).__name__ == 'list':
-				num_channels = len(waveseg['data_channel'])
-				if sample_rate_rule[0] in waveseg['data_channel']:
-					#log('sample_rate: ' + str(sample_rate_rule[0]) + ', rate: ' + str(sample_rate_rule[1]))a
-					start_time = waveseg['timestamp']
-					new_interval = 1.0 / sample_rate_rule[1]
-					old_interval = waveseg['sampling_interval']
-					
-					#log('new_interval: ' + str(new_interval) + ', old_interval: ' + str(old_interval))
-				
-					cur_time = start_time
-					new_time = start_time
-					cur_values = []
-					for i in xrange(0,num_channels):
-						cur_values.append([])
-					new_data = []
-
-					for value in waveseg['data']:
-						#log('  ' + str(cur_time) + ': ' + str(value))
-						if cur_time >= new_time and cur_time < new_time + new_interval:
-							for i in xrange(0,num_channels):
-								cur_values[i].append(value[i])
-						else:
-							#log(str(new_time) + ': ' + str(cur_values))
-							new_value = []
-							for i in xrange(0,num_channels):
-								new_value.append(mean(cur_values[i]))
-								cur_values[i] = [value[i]]
-							new_data.append(new_value)
-
-							new_time += new_interval
-						cur_time += old_interval
-					
-					new_value = []
-					for i in xrange(0,num_channels):
-						new_value.append(mean(cur_values[i]))
-					new_data.append(new_value)
-					
-					#log(new_data)
-					waveseg['data'] = new_data
-					waveseg['sampling_interval'] = new_interval
-			else:
-				if waveseg['data_channel'] == sample_rate_rule[0]:
-					#log('sample_rate: ' + str(sample_rate_rule[0]) + ', rate: ' + str(sample_rate_rule[1]))a
-					start_time = waveseg['timestamp']
-					new_interval = 1.0 / sample_rate_rule[1]
-					old_interval = waveseg['sampling_interval']
-					
-					#log('new_interval: ' + str(new_interval) + ', old_interval: ' + str(old_interval))
-				
-					cur_time = start_time
-					new_time = start_time
-					cur_values = []
-					new_data = []
-					for value in waveseg['data']:
-						#log('  ' + str(cur_time) + ': ' + str(value))
-						if cur_time >= new_time and cur_time < new_time + new_interval:
-							cur_values.append(value)
-						else:
-							#log(str(new_time) + ': ' + str(cur_values))
-							new_data.append(mean(cur_values))
-							cur_values = [value]
-							new_time += new_interval
-						cur_time += old_interval
-					new_data.append(mean(cur_values))
-
-					#log(new_data)
-					waveseg['data'] = new_data
-					waveseg['sampling_interval'] = new_interval
-
-
-
-# isSave = False: on-the-fly
-def process_modify_rules_and_save(modify_result, isSave = True, collection = None, data = None, cursor = None):
-	if not modify_result and not isSave:
-		for waveseg in cursor:
-			del waveseg['_id']
-			data.append(waveseg)
-
-	elif not modify_result and isSave:
-		# don't touch the collection, it will be process after this function
-		return
-
-	else: # there is modify_result
-		first_timestamp = collection.find().sort('timestamp', pymongo.ASCENDING)[0]['timestamp']	
-
-		if not isSave:
-			id_set = ()
-
-		for target_ids, modify_rule in modify_result:
-			for id in target_ids:
-				if not isSave:
-					id_set.insert(id)
-
-				waveseg = collection.find_one(id)
-				if waveseg:
-					modify_waveseg(waveseg, modify_rule, first_timestamp)
-
-					if isSave:
-						#collection.update({ '_id': id }, { '$set': { 'location': location } })
-						collection.save(waveseg)
-					else:
-						del waveseg['_id']
-						data.append(waveseg)
-
-		if not isSave:
-			# We also need to add unmodified wavesegs to data
-			for waveseg in cursor:
-				if not waveseg['_id'] in id_list:
-					del waveseg['_id']
-					data.append(waveseg)
-
-			
-
-
-
-# TODO: bugs in processing time. add support for location range
-def pre_query_waveseg_processing(username, collection, message, rules, consumer):
-	#log('--- start of pre_query_waveseg_processing() ---')
-
-	time_boundaries = []
-
-	# get time stamps in query
-	if 'query' in message and message['query']:
-		if 'timestamp' in message['query']:
-			time_boundaries.append(message['query']['timestamp']['$gte'])
-			time_boundaries.append(message['query']['timestamp']['$lte'])
-		if 'repeat_time' in message['query']:
-			if not process_repeat_time(message['query'], collection):
-				return False, HttpResponseBadRequest("There is no data")
-			for tcond in message['query']['$or']:
-				if 'timestamp' in tcond:
-					time_boundaries.append(int(tcond['timestamp']['$gte']))
-					time_boundaries.append(int(tcond['timestamp']['$lte']))
-
-	# get time stamps in rules
-	if rules != None:
-		rule_cursor = rules.find({ '$or': [ { 'consumer': None }, { 'consumer': consumer } ] }, { '_id': 0 })
-		
-		for rule in rule_cursor:
-			if 'timestamp' in rule:
-				time_boundaries.append(rule['timestamp']['$gte'])
-				time_boundaries.append(rule['timestamp']['$lte'])
-			if 'repeat_time' in rule:
-				if not process_repeat_time(rule, collection):
-					continue
-				for tcond in rule['$or']:
-					if 'timestamp' in tcond:
-						time_boundaries.append(int(tcond['timestamp']['$gte']))
-						time_boundaries.append(int(tcond['timestamp']['$lte']))
-
-	# if no time condition. return.
-	if len(time_boundaries) <= 0:
-		return False, None
-
-	time_boundaries = list(set(time_boundaries))
-	#log('time_boundaries: ' + str(time_boundaries))
-
-	# make new collection
-	temp_collection_name = 'temp_' + hashlib.sha1(str(random.random())).hexdigest()
-	new_collection = db[temp_collection_name]
-	
-	#### split wavesegs in time boundaries and inser into the new collection ###
-	data_channels = collection.find().distinct('data_channel')
-
-	# get data channels by handling multi channels
-	multi_channels = []
-	new_data_channels = []
-	for dc in data_channels:
-		dcname = dc.split('.')
-		if len(dcname) >= 2:
-			if dcname[0] not in multi_channels:
-				multi_channels.append(dcname[0])
-				new_data_channels.append(dc)
-		else:
-			new_data_channels.append(dc)
-
-	data_channels = new_data_channels
-	
-	#log(data_channels)
-
-	# split at time boundaries	
-	for dc in data_channels:
-		#log('data_channel: ' + str(dc))
-		cursor = collection.find({ 'data_channel': dc }, { '_id': 0 }).sort('timestamp')
-		tb_idx = 0
-		for waveseg in cursor:
-			#log(waveseg)
-			# check end of time boundaries
-			if tb_idx >= len(time_boundaries):
-				new_collection.insert(waveseg)
-				continue
-
-			starttime = waveseg['timestamp']
-			endtime = waveseg['timestamp'] + (len(waveseg['data']) - 1) * waveseg['sampling_interval']
-
-			while time_boundaries[tb_idx] <= starttime:
-				tb_idx += 1
-				if tb_idx >= len(time_boundaries):
-					break
-			if tb_idx >= len(time_boundaries):
-				new_collection.insert(waveseg)
-				continue
-
-			#log('starttime: ' + str(starttime) + ', endtime: ' + str(endtime) + ', tb: ' + str(time_boundaries[tb_idx]))
-			while time_boundaries[tb_idx] > starttime and time_boundaries[tb_idx] <= endtime:
-				#log('in!')
-				next_idx = int(math.ceil((time_boundaries[tb_idx] - starttime) / float(waveseg['sampling_interval'])))
-				data1 = waveseg['data'][:next_idx]
-				data2 = waveseg['data'][next_idx:]
-				new_waveseg = copy(waveseg)
-				new_waveseg['data'] = data1
-				#log('new_waveseg timestamp: ' + str(new_waveseg['timestamp']))
-				result = new_collection.insert(new_waveseg)
-				#log(result)
-				new_waveseg2 = copy(waveseg)
-				new_waveseg2['data'] = data2
-				new_waveseg2['timestamp'] = starttime + next_idx * waveseg['sampling_interval']
-				tb_idx += 1
-				waveseg = new_waveseg2
-				starttime = waveseg['timestamp']
-
-				if tb_idx >= len(time_boundaries):
-					break
-				
-			#log('waveseg timestamp: ' + str(waveseg['timestamp']))
-			result = new_collection.insert(waveseg)
-			#log(result)
-
-	#log('new_collection count: ' + str(new_collection.find().count()))
-
-	#log('--- end of pre_query_waveseg_processing() ---')
-	return True, temp_collection_name
-
-
-
-
+@hotshot_profile("PrivacyEngine.prof")
 def query(request):
-	global perform_test, gStartTime
-
-	gStartTime = time.time()
-
 	# Prepare for query processing.
-	
-	# benchmark
-	perform_test = []
-	
+
+	# Check request is valid
 	if request.method != 'POST':
 		return HttpResponseBadRequest('Not POST request')
 
@@ -616,12 +226,13 @@ def query(request):
 	except ObjectDoesNotExist:
 		isConsumer = True
 
-	# check identity of querier
+	# Check identity of querier
 	consumer = None
 	if not isConsumer:
 		username = userinfo.userID.username
 	else:
-		# this is consumer.. find out who this is on broker.
+		# This is consumer.. find out who this is on broker.
+		# TODO: checking data consumer identity on broker server takes time... do some caching?
 		try:
 			params = urllib.urlencode({
 				'apikey': request.POST['apikey'], 
@@ -640,7 +251,7 @@ def query(request):
 		if response.status != 200:
 			return HttpResponseBadRequest(cjson.encode({'error': 'Error from broker: ' + reply}))
 		
-		# check if this querier specifies queriee.
+		# Check if this querier specifies queriee.
 		if not 'contributor' in request.POST:
 			return HttpResponseBadRequest("No 'contributor' in post data")
 		username = request.POST['contributor']
@@ -650,7 +261,7 @@ def query(request):
 		# save querier's name
 		consumer = reply
 
-	# get queriee's db collection
+	# Get queriee's db collection
 	message = cjson.decode(request.POST['data'])
 
 	# TODO: clean up this!
@@ -664,19 +275,11 @@ def query(request):
 	#collection = db['result']
 	#collection.ensure_index([('location', pymongo.GEO2D)])
 
-	# support for performance benchmarks
-	if 'test' in message:
-		if message['test'] == 'opt':
-			collection = db[username + '_testdata_opt']
-		else:
-			collection = db[username + '_testdata']
-
-	# yes... ensure index on the collection (w/o it, slow..)
-	
+	# Yes... ensure index on the collection (w/o it, slow..)
 	collection.ensure_index('_id')
 
 	#h=hpy()
-	ret = privacyengine.process(request, message, isConsumer, consumer,  username, collection)
+	ret = privacyengine.process(db, request, message, isConsumer, consumer,  username, collection)
 	#h.heap()
 
 	return ret
