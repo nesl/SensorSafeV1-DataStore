@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 import httplib, urllib
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import render_to_response
-import json
 import pymongo, bson
 from django.contrib.auth.decorators import login_required
 from sensorsafe.datastore.forms import *
@@ -18,21 +17,21 @@ from googlemaps import GoogleMaps
 from threading import Lock
 from copy import copy, deepcopy
 import math
+from log import log
 
-# flags for benchmark test
+import cjson
+import json
+# To switch to cjson: ,cjson
+# To switch to json: ,json
 
-FILTER_BY_MERGING_CONDITIONS = True # DONE!
-FILTER_BY_SET_OPERATIONS = not FILTER_BY_MERGING_CONDITIONS
+# for memory profiling
+from guppy import hpy
 
-ON_THE_FLY_WAVESEG_MODIFICATION = False
-WAVESEG_MODIFY_AND_SAVE = not ON_THE_FLY_WAVESEG_MODIFICATION
+import privacyengine
 
-ON_THE_FLY_WAVESEG_PROCESSING = True
-PRE_QUERY_WAVESEG_PROCESSING = not ON_THE_FLY_WAVESEG_PROCESSING
 
-POST_UPLOAD_WAVESEG_PROCESSING = False
-NO_POST_UPLOAD_WAVESEG_PROCESSING = not POST_UPLOAD_WAVESEG_PROCESSING
-POST_UPLOAD_WAVESEG_PROCESSING_ADAPTIVE = False
+
+
 
 
 
@@ -48,7 +47,9 @@ def print_error_context():
 	print sys.exc_info()
 
 def json_dump_pretty_html(data):
-	return '<pre>' + json.dumps(data, sort_keys=True, indent=4) + '</pre>'
+	return '<pre>' + cjson.encode(data, sort_keys=True, indent=4) + '</pre>'
+
+
 
 
 
@@ -101,19 +102,11 @@ def upload(request):
 		collection = db[request.POST['collection_name']]
 	else:
 		collection = db[username]
-	waveseg = json.loads(request.POST['data'])
+	waveseg = cjson.decode(request.POST['data'])
 	collection.insert(waveseg)
 
 	return HttpResponse("Upload successful (" + username + ")")
 
-
-
-def log(object):
-	if type(object) is str:
-		print >> sys.stderr, object
-	else:
-		print >> sys.stderr, str(object)
-	sys.stderr.flush()
 
 
 @login_required
@@ -476,10 +469,6 @@ def process_modify_rules_and_save(modify_result, isSave = True, collection = Non
 			
 
 
-def isExistQueryOptions(message):
-	return 'select' in message or 'distinct' in message or 'sort' in message or 'at' in message
-					
-
 
 # TODO: bugs in processing time. add support for location range
 def pre_query_waveseg_processing(username, collection, message, rules, consumer):
@@ -603,10 +592,13 @@ def pre_query_waveseg_processing(username, collection, message, rules, consumer)
 
 
 def query(request):
-	global perform_test
+	global perform_test, gStartTime
+
+	gStartTime = time.time()
 
 	# Prepare for query processing.
-
+	
+	# benchmark
 	perform_test = []
 	
 	if request.method != 'POST':
@@ -646,7 +638,7 @@ def query(request):
 			log('Error: ' + str(detail))
 
 		if response.status != 200:
-			return HttpResponseBadRequest(json.dumps({'error': 'Error from broker: ' + reply}))
+			return HttpResponseBadRequest(cjson.encode({'error': 'Error from broker: ' + reply}))
 		
 		# check if this querier specifies queriee.
 		if not 'contributor' in request.POST:
@@ -659,7 +651,7 @@ def query(request):
 		consumer = reply
 
 	# get queriee's db collection
-	message = json.loads(request.POST['data'])
+	message = cjson.decode(request.POST['data'])
 
 	# TODO: clean up this!
 	#collection = db[username]
@@ -680,413 +672,14 @@ def query(request):
 			collection = db[username + '_testdata']
 
 	# yes... ensure index on the collection (w/o it, slow..)
+	
 	collection.ensure_index('_id')
 
-	return query_process_bottom_half(request, message, isConsumer, consumer,  username, collection)
+	#h=hpy()
+	ret = privacyengine.process(request, message, isConsumer, consumer,  username, collection)
+	#h.heap()
 
-
-
-
-
-
-def query_process_bottom_half(request, message, isConsumer, consumer, username, collection):
-	global perform_test
-	
-	# Actual query processing. Fun part is here!
-
-	log('########### NEW QUERY ##############')
-	log('query: ' + str(message))
-
-	# let's do privacy filtering.
-	cursor = None
-	waveseg_pre_temp_collection_name = None
-	temp_collection_name = None
-	isQueryOptions = isExistQueryOptions(message)
-	#isQueryOptions = True
-
-	# when the querier is data consumer
-	if isConsumer: 	
-		
-		# find rules that apply to this consumer
-		rules = db[username + '_rules']
-		rule_cursor = rules.find({ '$or': [ { 'consumer': None }, { 'consumer': consumer } ] }, { '_id': 0 })
-
-		# if there are no rules for this consumer
-		if rule_cursor.count() <= 0:
-			return HttpResponse('["No privacy rules for this consumer"]')
-		
-		# if rules exists
-		else:
-			
-			# support for benchmarks
-			starttime = time.time()
-		
-			# waveseg processing for range queries	
-			# Note: this is needed only for range queries, and this checking is done in the function because we also need to check if any rules contain range conditions.
-			if PRE_QUERY_WAVESEG_PROCESSING:
-				result, waveseg_pre_temp_collection_name = pre_query_waveseg_processing(username, collection, message, rules, consumer)
-				if result:
-					collection = db[waveseg_pre_temp_collection_name]
-
-			# support for benchmarks
-			elap_time = time.time() - starttime
-			log('waveseg preprocess time: ' + str(elap_time))
-			perform_test.append(elap_time)
-			starttime = time.time()
-		
-			if FILTER_BY_SET_OPERATIONS:
-				# first, perform the query and get unfiltered data.
-				if 'query' in message and message['query']:
-					if 'location_label' in message['query']:
-						if not process_location_label(message['query'], username):
-							return HttpResponseBadRequest("Error from process_location_label")
-					if 'repeat_time' in message['query']:
-						if not process_repeat_time(message['query'], collection):
-							return HttpResponseBadRequest("There is no data")
-					query_result = set(collection.find(message['query']).distinct('_id'))
-				else:
-					query_result = set(collection.find().distinct('_id'))
-
-			# support for benchmarks
-			#elap_time = time.time() - starttime
-			#log('original query processing time: ' + str(elap_time))
-			#perform_test.append(elap_time)
-			#log('before filtering # of wavesegs: ' + str(len(query_result)))
-
-			starttime = time.time()
-
-			if FILTER_BY_SET_OPERATIONS:
-				# alright, let's apply the rules.
-				allow_result = []
-				deny_result = []
-			
-			modify_result = []
-
-			if FILTER_BY_MERGING_CONDITIONS:
-				merged_query = { '$and': [ message['query'] ], '$nor': [] }
-
-			# since we have multiple rules.
-			for rule in rule_cursor:
-				log('rule: ' + str(rule))
-
-				if 'consumer' in rule:
-					del rule['consumer']
-				if 'rule_name' in rule:
-					del rule['rule_name']
-
-				# convert a rule to a valid query object...
-				# log('before: ' + str(rule))
-				if 'location_label' in rule:
-					if not process_location_label(rule, username):
-						return HttpResponseBadRequest('["Error from process_location_label()"]')
-				if 'repeat_time' in rule:
-					if not process_repeat_time(rule, collection):
-						#return HttpResponseBadRequest("There is no data") <- yes, this is the reason we continue.
-						continue
-
-				# get allow_result[], deny_result[], modify_result[]
-				if 'action' in rule:
-					if rule['action'] == 'allow': 
-						del rule['action']
-
-						if FILTER_BY_SET_OPERATIONS:
-							allow_result.append(set(collection.find(rule).distinct('_id')))
-				
-						if FILTER_BY_MERGING_CONDITIONS:
-							# Filtering w/ query condition merging
-							merged_query['$and'].append(rule)
-
-					elif rule['action'] == 'modify':
-						modify_rule = rule['modify']
-						del rule['modify']
-						del rule['action']
-						modify_ids = set(collection.find(rule).distinct('_id'))
-
-						# save list of wavesegs-to-be-modified.
-						modify_result.append((modify_ids, modify_rule))
-
-					elif rule['action'] == 'deny':
-						del rule['action']
-
-						if FILTER_BY_SET_OPERATIONS:
-							deny_result.append(set(collection.find(rule).distinct('_id')))
-						
-						if FILTER_BY_MERGING_CONDITIONS:
-							# Filtering w/ query condition merging
-							merged_query['$nor'].append(rule)
-
-					else:
-						assert False # invalid rule['action']
-
-				else:
-					assert False # there is no rule['action']
-
-				# log('after: ' + str(rule))
-
-			if FILTER_BY_MERGING_CONDITIONS:
-				# Filtering w/ query condition merging
-				log('### Testing filtering w/ query condition merging ###')
-				if not merged_query['$nor']:
-					del merged_query['$nor']
-				if not merged_query['$and']:
-					del merged_query['$and']
-				if not merged_query:
-					assert False # empty merged_query{}
-				log('merged_query = ' + str(merged_query))
-				# debug pupose
-				test_count = collection.find(merged_query).count()
-				log('find(merged_query).count() = ' + str(test_count))
-				#for o in cursor:
-				#	log(o['_id'])
-				log('###########################')
-
-			if FILTER_BY_SET_OPERATIONS:
-				# apply allow_result[] and deny_result[] to query_result[]
-				if allow_result:
-					allow_result = set.union(*allow_result)
-					query_result &= allow_result
-				if deny_result:
-					deny_result = set.union(*deny_result)
-					query_result -= deny_result
-
-				# support for benchmarks
-				elap_time = time.time() - starttime
-				log('rule processing (set operation) time: ' + str(elap_time))
-				perform_test.append(elap_time)
-
-				# after applying allow and deny rules, if nothing left...
-				if (len(query_result) <= 0):
-					return HttpResponse('["No data left after filtering..."]')
-
-			# Good. Process field selection for data consumer. Here we are going to process field selection first in line of processing query options. Further query options are processed in the 'if isQueryOptions' block down below. The only difference between in case of query by data consumer and contributor is this field selection processing. It's all because mongoDB supports field selection as an argument of find(). Further reasons are explained down below, too.
-			if isQueryOptions:
-
-				if FILTER_BY_SET_OPERATIONS:
-					# make new collection with allowed documents
-					# create a new collection
-					temp_collection_name = 'temp_' + hashlib.sha1(str(random.random())).hexdigest()
-					new_collection = db[temp_collection_name]
-
-					# support for benchmarks
-					starttime = time.time()
-
-					# insert the query result into the new collection
-					for id in query_result:
-						new_collection.insert(collection.find_one(id))
-					
-					# support for benchmarks
-					elap_time = time.time() - starttime
-					log('insert operation: ' + str(elap_time))
-					perform_test.append(elap_time)
-
-					# replace current collection.
-					collection = new_collection
-
-				#starttime = time.time()
-				#for id in query_result:
-				#	collection.find_one(id)
-				#log('find_one() operation:' + str(time.time() - starttime))
-				
-				# process modify_rules()
-				#
-				# TODO: more performance optimization.
-				# we can postpone this to the data retrieval time 
-				# (so we can minimize collection.save(), which requires disk access) when...
-				# 
-				# in modify_rule,
-				# if no timestamp_resolution:
-				#		postpone.
-				# else if selection leaves timestamp, distinct leaves timestamp, "at" != 0:
-				#		postpone
-				# else
-				#		do it here.
-				#
-				# --> TODO:review this.
-
-				# Do process_modify_rules here because of the field selection.
-				if len(modify_result) > 0:
-					starttime = time.time()
-					process_modify_rules_and_save(modify_result, collection)
-					log('modify rules operation: ' + str(time.time() - starttime))
-
-				# process field selection
-				if not 'select' in message:
-					if FILTER_BY_SET_OPERATIONS:
-						cursor = collection.find(None, {'_id': 0}) # deselect _id field
-					if FILTER_BY_MERGING_CONDITIONS:
-						cursor = collection.find(merged_query, {'_id': 0}) # deselect _id field
-				else:
-					select = message['select']
-					select['_id'] = 0 # deselect _id field
-					if FILTER_BY_SET_OPERATIONS:
-						cursor = collection.find(None, select)
-					if FILTER_BY_MERGING_CONDITIONS:
-						cursor = collection.find(merged_query, select)
-			
-			else: # no query options
-				# Here, we don't remove _id field because of the on-the-fly waveseg modification.
-				if FILTER_BY_SET_OPERATIONS:
-					cursor = collection.find() 
-				if FILTER_BY_MERGING_CONDITIONS:
-					cursor = collection.find(merged_query)
-			
-				if FILTER_BY_SET_OPERATIONS:
-					log('after filtering, len(query_result) = ' + str(len(query_result)))
-				if FILTER_BY_MERGING_CONDITIONS:
-					log('after filtering: cursor.count() = ' + str(cursor.count()))
-
-	# when the querier is data contributor of this server
-	else:
-
-		starttime = time.time()
-		
-		# waveseg processing for range queries
-		if PRE_QUERY_WAVESEG_PROCESSING:
-			result, waveseg_pre_temp_collection_name = pre_query_waveseg_processing(username, collection, message, None, None)
-
-			if result:
-				collection = db[waveseg_pre_temp_collection_name]
-		
-		log('waveseg preprocess time: ' + str(time.time() - starttime))
-
-		starttime = time.time()
-
-		# Process field selection for data contributor, this is done here instead of if isQueryOptions block because field selection in mongoDB is done with find() function. Advanced query options are done by additionally calling functions on the cursor returned by find().
-		if not 'select' in message:
-			if 'query' in message and message['query']:
-				if 'location_label' in message['query']:
-					if not process_location_label(message['query'], username):
-						return HttpResponseBadRequest("Error from process_location_label")
-				if 'repeat_time' in message['query']:
-					if not process_repeat_time(message['query'], collection):
-						return HttpResponseBadRequest('There is no data')
-				log('after process: ' + str(message['query']))
-				cursor = collection.find(message['query'], {'_id': 0})
-			else:
-				cursor = collection.find(None, {'_id': 0})
-		else:
-			select = message['select']
-			select['_id'] = 0
-			if 'query' in message and message['query']:
-				if 'location_label' in message['query']:
-					if not process_location_label(message['query'], username):
-						return HttpResponseBadRequest("Error from process_location_label")
-				if 'repeat_time' in message['query']:
-					if not process_repeat_time(message['query'], collection):
-						return HttpResponseBadRequest('There is no data')
-				log('after process: ' + str(message['query']))
-				cursor = collection.find(message['query'], select)
-			else:
-				cursor = collection.find(None, select)
-	
-		log('process query and getting cursor: ' + str(time.time() - starttime))
-
-
-	# Common code for both data consumers and contributors.
-	# Process further query options...
-	if isQueryOptions:
-		
-		if 'sort' in message and message['sort']:
-			for k, v in message['sort'].iteritems():
-				collection.ensure_index(k);
-				if v == 1:
-					cursor = cursor.sort(k, pymongo.ASCENDING)
-				elif v == -1:
-					cursor = cursor.sort(k, pymongo.DESCENDING)
-
-		if 'distinct' in message and message['distinct']:
-			cursor = cursor.distinct(message['distinct'])
-
-		# data retrieval
-		if 'at' in message and message['at']:
-			if cursor.count() <= 0:
-				return HttpResponseBadRequest(json.dumps({'error': "There are no data"}))
-			if message['at'] == 'last':
-				count = cursor.count()
-				data = cursor[count-1]
-			elif message['at'] == 'first':
-				data = cursor[0]
-			else:
-				data = cursor[message['at']]
-		else:
-			# support for benchmarks
-			starttime = time.time()
-
-			# retrieve
-			data = []
-			for obj in cursor:
-				data.append(obj)
-
-			# support for benchmarks
-			elap_time = time.time() - starttime
-			log('retrieve operation: ' + str(elap_time))
-			perform_test.append(elap_time)
-
-		# clean up temp collection
-		if temp_collection_name:
-			db.drop_collection(temp_collection_name)
-
-	# no query options
-	else:
-		
-		if not isConsumer:
-			# support for benchmakrs
-			starttime = time.time()
-
-			# retreive data object
-			data = []
-			for obj in cursor:
-				data.append(obj)
-			log('retrieve operation: ' + str(time.time() - starttime))
-
-		else:
-	
-			# support for benchmarks
-			starttime = time.time()
-			
-			data = []
-		
-			# retreive data object and perform modify rules "on-the-fly".
-			if FILTER_BY_SET_OPERATIONS:
-				first_timestamp = cursor.sort('timestamp', pymongo.ASCENDING)[0]['timestamp']	
-				for id in query_result:
-					obj = collection.find_one(id)
-					del obj['_id']
-					for modify_id, modify_rule in modify_result:
-						if id in modify_id:
-							modify_waveseg(obj, modify_rule, first_timestamp)
-					data.append(obj)
-			
-			if FILTER_BY_MERGING_CONDITIONS:
-				process_modify_rules_and_save(modify_result, isSave = False, data = data, cursor = cursor)
-
-			# support for benchmarks
-			elap_time = time.time() - starttime
-			log('retrieve & modify operation: ' + str(elap_time))
-			perform_test.append(elap_time)
-
-
-	# support for benchmarks
-	starttime = time.time()
-
-	# alright, we are almost done. let's json-encode it.
-	json_data = json.dumps(data)
-
-	# support for benchmarks
-	elap_time = time.time() - starttime
-	log('json encoding time: ' + str(elap_time))
-	perform_test.append(elap_time)
-
-	# clean up temp collection of waveseg preprocessing
-	if waveseg_pre_temp_collection_name != None:
-		db.drop_collection(waveseg_pre_temp_collection_name)
-
-	# support for benchmarks.
-	if not 'test' in message:
-		return HttpResponse(json_data)
-	else:
-		return HttpResponse(json.dumps(perform_test))
-
+	return ret
 
 
 @login_required
@@ -1105,7 +698,7 @@ def uploadrules(request):
 		return http_response
 	username = userinfo.userID.username
 	
-	rule = json.loads(request.POST['data'])
+	rule = cjson.decode(request.POST['data'])
 	collection = db[username + '_rules']
 
 	if '_id' in rule:
@@ -1130,7 +723,7 @@ def getrules(request):
 	rules = []
 	for rule in collection.find(None, { '_id': 0 }):
 		rules.append(rule)
-	return HttpResponse(json.dumps(rules))
+	return HttpResponse(cjson.encode(rules))
 
 
 
@@ -1146,7 +739,7 @@ def deleterules(request):
 	collection = db[username + '_rules']
 
 	rule_id_list = []
-	for id in json.loads(request.POST['rule_ids']):
+	for id in cjson.decode(request.POST['rule_ids']):
 		rule_id_list.append(bson.objectid.ObjectId(id))
 
 	collection.remove({ '_id': { '$in': rule_id_list} } );
@@ -1161,7 +754,7 @@ def privacyrules(request):
 	rules = []
 	for rule in collection.find():		
 		rule['_id'] = str(rule['_id'])
-		rules.append({ 'rule_json': json.dumps(rule), 'rule_id': rule['_id'], 'rule_name': rule['rule_name'] })	
+		rules.append({ 'rule_json': cjson.encode(rule), 'rule_id': rule['_id'], 'rule_name': rule['rule_name'] })	
 	return render_to_response('privacyrules.html', { 'apikey': userinfo.apiKey, 'rule_list': rules }, context_instance=RequestContext(request))
 
 
@@ -1181,7 +774,7 @@ def locationlabel(request):
 	collection = db[username + '_location_labels']
 	
 	if request.POST['action'] == 'add':
-		label = json.loads(request.POST['data'])
+		label = cjson.decode(request.POST['data'])
 		if collection.find({ 'label': label['label'] }).count() >= 1:
 			return HttpResponse('Error: existing label')
 		collection.insert(label, check_keys=False)
@@ -1189,7 +782,7 @@ def locationlabel(request):
 		labels = []
 		for o in collection.find(None, { '_id': 0 }):
 			labels.append(o)
-		return HttpResponse(json.dumps(labels))
+		return HttpResponse(cjson.encode(labels))
 	elif request.POST['action'] == 'delete':
 		collection.remove({ 'label': request.POST['label'] })
 	else:
@@ -1399,7 +992,7 @@ def search_rules(request):
 			log('Error: ' + str(detail))
 	
 		if response.status != 200:
-			return HttpResponseBadRequest(json.dumps({'error': 'Error from broker: ' + reply}))
+			return HttpResponseBadRequest(cjson.encode({'error': 'Error from broker: ' + reply}))
 
 		requestor_name = reply
 	
@@ -1408,7 +1001,7 @@ def search_rules(request):
 	# make check list table
 
 	# location_label
-	search_cond = json.loads(request.POST['query'])
+	search_cond = cjson.decode(request.POST['query'])
 	check_list = []
 	if 'location_label' in search_cond:
 		for label in search_cond['location_label']:
@@ -1494,7 +1087,7 @@ def search_rules(request):
 					if not is_modify_ok(check_item[1], rule):
 						check_item[0] = False
 
-		log(json.dumps(check_list, indent=2))
+		log(cjson.encode(check_list, indent=2))
 		
 		# check if this user satisfies check list.
 		is_satisfy = True
@@ -1506,7 +1099,7 @@ def search_rules(request):
 		if is_satisfy:
 			satisfy_users.append(username)
 	
-	return HttpResponse(json.dumps(satisfy_users))
+	return HttpResponse(cjson.encode(satisfy_users))
 
 
 @login_required
@@ -1518,7 +1111,7 @@ def test(request):
 	#for obj in collection.find():
 	#	obj['_id'] = str(obj['_id'])
 	#	data.append(obj)
-	#return render_to_response('map-simple.html', {'data': json.dumps(data)})
+	#return render_to_response('map-simple.html', {'data': cjson.encode(data)})
 	#return render_to_response('map-simple.html')
 	#userinfo = UserProfile.objects.get(userID__exact = request.user)
 	#return render_to_response('display.html', { 'apikey': userinfo.apiKey }, context_instance=RequestContext(request))

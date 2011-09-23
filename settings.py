@@ -89,4 +89,4 @@ LOGIN_REDIRECT_URL = '/profile/'
 
 AUTH_PROFILE_MODULE = 'datastore.UserProfile' 
 
-
+PROFILE_LOG_BASE = '/home/haksoo/profile-logs'

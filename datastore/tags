@@ -8,12 +8,16 @@ SimpleTest	tests.py	/^class SimpleTest(TestCase):$/;"	c
 UserProfile	models.py	/^class UserProfile(models.Model):$/;"	c
 UserRegistrationForm	forms.py	/^class UserRegistrationForm(forms.Form):$/;"	c
 __unicode__	models.py	/^	def __unicode__(self):      $/;"	m	class:UserProfile	file:
+_inner	views.py	/^		def _inner(*args, **kwargs):$/;"	f	function:hotshot_profile/_outer
+_outer	views.py	/^	def _outer(f):$/;"	f	function:hotshot_profile
 check_post_request	views.py	/^def check_post_request(postdata):$/;"	f
 check_post_request_apikey	views.py	/^def check_post_request_apikey(postdata):$/;"	f
 deleterules	views.py	/^def deleterules(request):$/;"	f
 display	views.py	/^def display(request):$/;"	f
+foo	foo.py	/^def foo():$/;"	f
 get_modify_list	views.py	/^def get_modify_list(search_cond):$/;"	f
 getrules	views.py	/^def getrules(request):$/;"	f
+hotshot_profile	views.py	/^def hotshot_profile(log_file):$/;"	f
 isExistQueryOptions	views.py	/^def isExistQueryOptions(message):$/;"	f
 is_allow_condition_match	views.py	/^def is_allow_condition_match(check_item, rule):$/;"	f
 is_deny_condition_match	views.py	/^def is_deny_condition_match(check_item, rule):$/;"	f
