@@ -32,6 +32,11 @@ import privacyengine
 
 
 
+# Flag for post-upload waveseg processing
+POST_UPLOAD_WAVESEG_PROCESSING = True
+NO_POST_UPLOAD_WAVESEG_PROCESSING = not POST_UPLOAD_WAVESEG_PROCESSING
+POST_UPLOAD_WAVESEG_PROCESSING_ADAPTIVE = False
+
 
 
 
@@ -105,6 +110,8 @@ def upload(request):
 		collection = db[username]
 	waveseg = cjson.decode(request.POST['data'])
 	collection.insert(waveseg)
+
+	#TODO: POST_UPLOAD_WAVESEG_PROCESSING
 
 	return HttpResponse("Upload successful (" + username + ")")
 
@@ -217,7 +224,7 @@ def query(request):
 	if not 'apikey' in request.POST:
 		return HttpResponseBadRequest("No 'apikey' in post data")
 
-	if not 'data' in request.POST:
+	if not 'message' in request.POST:
 		return HttpResponseBadRequest("No 'data' in post data")
 
 	isConsumer = False
@@ -262,7 +269,11 @@ def query(request):
 		consumer = reply
 
 	# Get queriee's db collection
-	message = cjson.decode(request.POST['data'])
+	message = cjson.decode(request.POST['message'])
+	if 'processing_options' in request.POST:
+		processing_options = cjson.decode(request.POST['processing_options'])
+	else:
+		processing_options = None
 
 	# TODO: clean up this!
 	#collection = db[username]
@@ -279,7 +290,7 @@ def query(request):
 	collection.ensure_index('_id')
 
 	#h=hpy()
-	ret = privacyengine.process(db, request, message, isConsumer, consumer,  username, collection)
+	ret = privacyengine.process(db, request, message, isConsumer, consumer,  username, collection, processing_options)
 	#h.heap()
 
 	return ret

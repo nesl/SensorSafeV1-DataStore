@@ -12,22 +12,21 @@ import json
 
 
 
-# Default Privacy Engine Options
+# Default Privacy Engine Options: Best performance
 FILTER_BY_MERGING_CONDITIONS = True # DONE
 FILTER_BY_SET_OPERATIONS = not FILTER_BY_MERGING_CONDITIONS
 
-ON_THE_FLY_WAVESEG_MODIFICATION = False
+ON_THE_FLY_WAVESEG_MODIFICATION = True
 WAVESEG_MODIFY_AND_SAVE = not ON_THE_FLY_WAVESEG_MODIFICATION
 
 ON_THE_FLY_WAVESEG_PROCESSING = True
 PRE_QUERY_WAVESEG_PROCESSING = not ON_THE_FLY_WAVESEG_PROCESSING
 
-POST_UPLOAD_WAVESEG_PROCESSING = False
-NO_POST_UPLOAD_WAVESEG_PROCESSING = not POST_UPLOAD_WAVESEG_PROCESSING
-POST_UPLOAD_WAVESEG_PROCESSING_ADAPTIVE = False
 
 
 
+# TODO: Consolidate HTTP response messages. JSON format.
+HTTP_RESPONSE_NO_DATA = HttpResponse(cjson.encode([]))
 
 
 
@@ -275,13 +274,17 @@ def get_first_timestamp(collection):
 
 
 def process_modify_rules_on_the_fly(modify_result, data, collection = None, cursor = None, query_result = None):
-	# if no modification, add wavesegs to the return data
+	
+	data = []
+
+	# If no modification, add wavesegs to the return data
 	if not modify_result:
 		if not cursor:
 			cursor = collection.find()
 		for waveseg in cursor:
 			del waveseg['_id']
 			data.append(waveseg)
+		return data
 
 	# TODO: check if this takes time!
 	first_timestamp = get_first_timestamp(collection)
@@ -313,6 +316,10 @@ def process_modify_rules_on_the_fly(modify_result, data, collection = None, curs
 			if not waveseg['_id'] in modified_id_set:
 				del waveseg['_id']
 				data.append(waveseg)
+
+	return data
+
+
 
 
 def process_modify_rules(modify_result, collection, query_result = None, merged_query = None):
@@ -606,10 +613,43 @@ def perform_set_operation(query_result, allow_result, deny_result):
 
 
 
+def retrieve_data_from_db(cursor):
+	data = []
+	for obj in cursor:
+		data.append(obj)
+	return data
+
+
+
+def retrieve_data_from_db_at(cursor, at):
+	if cursor.count() <= 0:
+		return None
+
+	if at == 'last':
+		count = cursor.count()
+		data = cursor[count-1]
+	elif at == 'first':
+		data = cursor[0]
+	else:
+		data = cursor[at]
+
+	return data
+
 
 #@hotshot_profile("PrivacyEngine.prof")
-def process(dbConnection, request, message, isConsumer, consumer, username, collection):
-	global db
+def process(dbConnection, request, message, isConsumer, consumer, username, collection, processing_options):
+	global db, FILTER_BY_MERGING_CONDITIONS, FILTER_BY_SET_OPERATIONS, ON_THE_FLY_WAVESEG_MODIFICATION, WAVESEG_MODIFY_AND_SAVE, ON_THE_FLY_WAVESEG_PROCESSING, PRE_QUERY_WAVESEG_PROCESSING
+
+	# Set processing options.
+	if processing_options:
+		FILTER_BY_MERGING_CONDITIONS = processing_options['filter_by_merging_conditions']
+		FILTER_BY_SET_OPERATIONS = not FILTER_BY_MERGING_CONDITIONS
+
+		ON_THE_FLY_WAVESEG_MODIFICATION = processing_options['on-the-fly_waveseg_modification']
+		WAVESEG_MODIFY_AND_SAVE = not ON_THE_FLY_WAVESEG_MODIFICATION
+
+		ON_THE_FLY_WAVESEG_PROCESSING = processing_options['on-the-fly_waveseg_processing']
+		PRE_QUERY_WAVESEG_PROCESSING = not ON_THE_FLY_WAVESEG_PROCESSING
 
 	db = dbConnection
 	
@@ -676,8 +716,10 @@ def process(dbConnection, request, message, isConsumer, consumer, username, coll
 					return HttpResponse('["No data left after filtering..."]')
 
 			# Good. Process field selection for data consumer. Here we are going to process field selection first before processing other query options. Further query options are processed in the 'if isQueryOptions' block down below. The only difference between in case of query by data consumer and contributor is this field selection processing. It's all because mongoDB supports field selection as an argument of find(). Further reasons are explained down below, too.
+			
 			if 'select' in message:
-				# Do process_modify_rules() here because the field selection afterwards might remove conditions required by modify_rules.
+				
+				# Do process_modify_rules() here because the field selection afterwards might remove conditions required by modify_rules.				
 				# TODO: on-the-fly field selection might solve this problem.
 				if len(modify_result) > 0:
 					if FILTER_BY_SET_OPERATIONS:
@@ -717,15 +759,9 @@ def process(dbConnection, request, message, isConsumer, consumer, username, coll
 		
 		# Query condition pre-processing
 		if 'query' in message and message['query']:
-			if 'location_label' in message['query']:
-				if not process_location_label(message['query'], username):
-					return HttpResponseBadRequest("Error from process_location_label")
-			if 'repeat_time' in message['query']:
-				if not process_repeat_time(message['query'], collection):
-					return HttpResponseBadRequest('There is no data')
-			log('after making query valid: ' + str(message['query']))
+			condition_preprocessing(message['query'], username)
 
-		# Process field selection for data contributor, this is done here instead of if isQueryOptions block because field selection in mongoDB is done with find() function. Advanced query options are done by additionally calling functions on the cursor returned by find().
+		# Get the cursor w/ field selection, this is done here instead of if isQueryOptions block because field selection in mongoDB is done with find() function. Advanced query options are done by additionally calling functions on the cursor.
 		if 'select' in message:
 			select = message['select']
 			select['_id'] = 0 # deselect _id field
@@ -742,6 +778,9 @@ def process(dbConnection, request, message, isConsumer, consumer, username, coll
 		log('cursor.count() = ' + str(cursor.count()))
 
 
+
+
+
 	# Common code for both data consumers and contributors.
 	# Process further query options...
 	if isQueryOptions:
@@ -756,51 +795,44 @@ def process(dbConnection, request, message, isConsumer, consumer, username, coll
 		if 'distinct' in message and message['distinct']:
 			cursor = cursor.distinct(message['distinct'])
 
-		# Data retrieval
+		# Data retrieval with 'at' query option.
 		if 'at' in message and message['at']:
-			if cursor.count() <= 0:
-				return HttpResponseBadRequest(cjson.encode({'error': "There are no data"}))
-			if message['at'] == 'last':
-				count = cursor.count()
-				data = cursor[count-1]
-			elif message['at'] == 'first':
-				data = cursor[0]
-			else:
-				data = cursor[message['at']]
+			data = retrieve_data_from_db_at(cursor, message['at'])
+			if not data:
+				return HTTP_RESPONSE_NO_DATA
 		else:
 			# Data retrieval
-			data = []
-			for obj in cursor:
-				data.append(obj)
+			data = retrieve_data_from_db(data, cursor)
+			if not data:
+				return HTTP_RESPONSE_NO_DATA
 
-		# clean up temp collection
-		if temp_collection_name:
-			db.drop_collection(temp_collection_name)
-
-	# no query options
+	# If no query options,
 	else:
 		
 		if not isConsumer:
 			# Data retreival
-			data = []
-			for obj in cursor:
-				data.append(obj)
-
+			data = retrieve_data_from_db(cursor)
+			if not data:
+				return HTTP_RESPONSE_NO_DATA
 		else:
-			data = []
-		
 			# Retreive data object and perform modify rules "on-the-fly".
 			if FILTER_BY_SET_OPERATIONS:
-				process_modify_rules_on_the_fly(modify_result, data, collection = collection, query_result = query_result)
+				data = process_modify_rules_on_the_fly(modify_result, data, collection = collection, query_result = query_result)
+				if not data:
+					return HTTP_RESPONSE_NO_DATA
 			elif FILTER_BY_MERGING_CONDITIONS:
 				# This also perform on-the-fly waveseg modification.
-				process_modify_rules_on_the_fly(modify_result, data, collection = collection, cursor = cursor)
+				data = process_modify_rules_on_the_fly(modify_result, data, collection = collection, cursor = cursor)
+				if not data:
+					return HTTP_RESPONSE_NO_DATA
 
-	# alright, we are almost done. let's json-encode it.
+	# Alright, we are almost done. let's json-encode it.
 	json_data = cjson.encode(data)
 
-	# clean up temp collection of waveseg preprocessing
-	if waveseg_pre_temp_collection_name != None:
+	# Clean up temp collection
+	if temp_collection_name:
+		db.drop_collection(temp_collection_name)
+	if waveseg_pre_temp_collection_name:
 		db.drop_collection(waveseg_pre_temp_collection_name)
 
 	return HttpResponse(json_data)

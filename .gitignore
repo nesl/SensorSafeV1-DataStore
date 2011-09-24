@@ -2,6 +2,7 @@
 logs
 *.pyc
 *.swp
+tags
 
 # Eclipse Android project ignores
 bin
