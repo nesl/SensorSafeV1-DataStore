@@ -273,7 +273,7 @@ def get_first_timestamp(collection):
 
 
 
-def process_modify_rules_on_the_fly(modify_result, data, collection = None, cursor = None, query_result = None):
+def process_modify_rules_on_the_fly_with_retrieve_data(modify_result, collection = None, cursor = None, query_result = None):
 	
 	data = []
 
@@ -293,7 +293,7 @@ def process_modify_rules_on_the_fly(modify_result, data, collection = None, curs
 		for id in query_result:
 			obj = collection.find_one(id)
 			del obj['_id']
-			# TODO: possibly slow when modify result is big.
+			# TODO: Need efficiency. Possibly slow when modify result is big.
 			for modify_id, modify_rule in modify_result:
 				if id in modify_id:
 					modify_waveseg(obj, modify_rule, first_timestamp)
@@ -636,8 +636,21 @@ def retrieve_data_from_db_at(cursor, at):
 	return data
 
 
+
+
+
+
+def encode_data_to_json(data):
+	return cjson.encode(data)
+
+
+
+
+# TODO: when FILTER_BY_SET_OPERATION, track and check relationships among cursor, collection, and query options... something is weird.
+# check if query options are properly processed with FILTER_BY_SET_OPERATION.
+
 #@hotshot_profile("PrivacyEngine.prof")
-def process(dbConnection, request, message, isConsumer, consumer, username, collection, processing_options):
+def process_query(dbConnection, request, message, isConsumer, consumer, username, collection, processing_options):
 	global db, FILTER_BY_MERGING_CONDITIONS, FILTER_BY_SET_OPERATIONS, ON_THE_FLY_WAVESEG_MODIFICATION, WAVESEG_MODIFY_AND_SAVE, ON_THE_FLY_WAVESEG_PROCESSING, PRE_QUERY_WAVESEG_PROCESSING
 
 	# Set processing options.
@@ -713,7 +726,7 @@ def process(dbConnection, request, message, isConsumer, consumer, username, coll
 
 				# after applying allow and deny rules, if nothing left...
 				if (len(query_result) <= 0):
-					return HttpResponse('["No data left after filtering..."]')
+					return HTTP_RESPONSE_NO_DATA
 
 			# Good. Process field selection for data consumer. Here we are going to process field selection first before processing other query options. Further query options are processed in the 'if isQueryOptions' block down below. The only difference between in case of query by data consumer and contributor is this field selection processing. It's all because mongoDB supports field selection as an argument of find(). Further reasons are explained down below, too.
 			
@@ -802,13 +815,12 @@ def process(dbConnection, request, message, isConsumer, consumer, username, coll
 				return HTTP_RESPONSE_NO_DATA
 		else:
 			# Data retrieval
-			data = retrieve_data_from_db(data, cursor)
+			data = retrieve_data_from_db(cursor)
 			if not data:
 				return HTTP_RESPONSE_NO_DATA
 
 	# If no query options,
 	else:
-		
 		if not isConsumer:
 			# Data retreival
 			data = retrieve_data_from_db(cursor)
@@ -817,17 +829,18 @@ def process(dbConnection, request, message, isConsumer, consumer, username, coll
 		else:
 			# Retreive data object and perform modify rules "on-the-fly".
 			if FILTER_BY_SET_OPERATIONS:
-				data = process_modify_rules_on_the_fly(modify_result, data, collection = collection, query_result = query_result)
+				data = process_modify_rules_on_the_fly_with_retrieve_data(modify_result, collection = collection, query_result = query_result)
 				if not data:
 					return HTTP_RESPONSE_NO_DATA
 			elif FILTER_BY_MERGING_CONDITIONS:
 				# This also perform on-the-fly waveseg modification.
-				data = process_modify_rules_on_the_fly(modify_result, data, collection = collection, cursor = cursor)
+				data = process_modify_rules_on_the_fly_with_retrieve_data(modify_result, collection = collection, cursor = cursor)
 				if not data:
 					return HTTP_RESPONSE_NO_DATA
 
 	# Alright, we are almost done. let's json-encode it.
-	json_data = cjson.encode(data)
+	json_data = encode_data_to_json(data)
+
 
 	# Clean up temp collection
 	if temp_collection_name:

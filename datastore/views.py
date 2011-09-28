@@ -70,8 +70,8 @@ def check_post_request(postdata):
 	if not 'apikey' in postdata:
 		return False, None, HttpResponseBadRequest("No 'apikey' in post data")
 
-	if not 'data' in postdata:
-		return False, None, HttpResponseBadRequest("No 'data' in post data")
+	if not 'message' in postdata:
+		return False, None, HttpResponseBadRequest("No 'message' in post data")
 
 	try:
 		userinfo = UserProfile.objects.get(apiKey__exact = postdata['apikey'])
@@ -224,8 +224,8 @@ def query(request):
 	if not 'apikey' in request.POST:
 		return HttpResponseBadRequest("No 'apikey' in post data")
 
-	if not 'message' in request.POST:
-		return HttpResponseBadRequest("No 'data' in post data")
+	if not ('message' in request.POST or 'data' in request.POST):
+		return HttpResponseBadRequest("No 'message' in post data")
 
 	isConsumer = False
 	try:
@@ -269,7 +269,11 @@ def query(request):
 		consumer = reply
 
 	# Get queriee's db collection
-	message = cjson.decode(request.POST['message'])
+	if 'message' in request.POST:
+		message = cjson.decode(request.POST['message'])
+	elif 'data' in request.POST:
+		message = cjson.decode(request.POST['data'])
+		
 	if 'processing_options' in request.POST:
 		processing_options = cjson.decode(request.POST['processing_options'])
 	else:
@@ -277,20 +281,14 @@ def query(request):
 
 	# TODO: clean up this!
 	#collection = db[username]
-	#collection = db[username + '_test200']
-	#collection = db[username + '_test200_opt']
 	collection = db[username + '_testdata_opt']
-	#collection = db[username + '_testdata_opt']
-	#collection = db[username + '_test_10000']
-	#collection = db[username + '_test_1000_opt']
-	#collection = db['result']
-	#collection.ensure_index([('location', pymongo.GEO2D)])
+	collection.ensure_index([('location', pymongo.GEO2D)])
 
 	# Yes... ensure index on the collection (w/o it, slow..)
 	collection.ensure_index('_id')
 
 	#h=hpy()
-	ret = privacyengine.process(db, request, message, isConsumer, consumer,  username, collection, processing_options)
+	ret = privacyengine.process_query(db, request, message, isConsumer, consumer,  username, collection, processing_options)
 	#h.heap()
 
 	return ret
@@ -455,7 +453,7 @@ def is_time_overlap(cond, rule):
 			if rule_end >= cond_start and rule_start <= cond_end:
 				return True
 		else:
-			# TODO
+			# TODO: what should I do here?
 			return False
 
 	return False
@@ -577,7 +575,7 @@ def search_rules(request):
 		return HttpResponseBadRequest("No 'apikey' in post data")
 
 	if not 'query' in request.POST:
-		return HttpResponseBadRequest("No 'data' in post data")
+		return HttpResponseBadRequest("No 'query' in post data")
 
 	# check identity
 	isConsumer = False

@@ -17,6 +17,7 @@ condition_preprocessing	privacyengine.py	/^def condition_preprocessing(condition
 create_temporary_collection	privacyengine.py	/^def create_temporary_collection(filtered_result, collection):$/;"	f
 deleterules	views.py	/^def deleterules(request):$/;"	f
 display	views.py	/^def display(request):$/;"	f
+encode_data_to_json	privacyengine.py	/^def encode_data_to_json(data):$/;"	f
 foo	foo.py	/^def foo():$/;"	f
 get_allow_deny_modify_sets_or_merged_query	privacyengine.py	/^def get_allow_deny_modify_sets_or_merged_query(allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection):$/;"	f
 get_first_timestamp	privacyengine.py	/^def get_first_timestamp(collection):$/;"	f
@@ -40,10 +41,10 @@ perform_set_operation	privacyengine.py	/^def perform_set_operation(query_result,
 pre_query_waveseg_processing	privacyengine.py	/^def pre_query_waveseg_processing(username, collection, message, rules, consumer):$/;"	f
 print_error_context	views.py	/^def print_error_context():$/;"	f
 privacyrules	views.py	/^def privacyrules(request):$/;"	f
-process	privacyengine.py	/^def process(dbConnection, request, message, isConsumer, consumer, username, collection, processing_options):$/;"	f
 process_location_label	privacyengine.py	/^def process_location_label(query, username):$/;"	f
 process_modify_rules	privacyengine.py	/^def process_modify_rules(modify_result, collection, query_result = None, merged_query = None):$/;"	f
-process_modify_rules_on_the_fly	privacyengine.py	/^def process_modify_rules_on_the_fly(modify_result, data, collection = None, cursor = None, query_result = None):$/;"	f
+process_modify_rules_on_the_fly_with_retrieve_data	privacyengine.py	/^def process_modify_rules_on_the_fly_with_retrieve_data(modify_result, collection = None, cursor = None, query_result = None):$/;"	f
+process_query	privacyengine.py	/^def process_query(dbConnection, request, message, isConsumer, consumer, username, collection, processing_options):$/;"	f
 process_repeat_time	privacyengine.py	/^def process_repeat_time(query, collection):$/;"	f
 profile	views.py	/^def profile(request):$/;"	f
 query	views.py	/^def query(request):$/;"	f
@@ -51,7 +52,7 @@ rank	views.py	/^def rank(str):$/;"	f
 reduce_address	privacyengine.py	/^def reduce_address(address_str, level):$/;"	f
 register	views.py	/^def register(request, url=None):$/;"	f
 retrieve_data_from_db	privacyengine.py	/^def retrieve_data_from_db(cursor):$/;"	f
-retrieve_data_from_db_at	privacyengine.py	/^def retrieve_data_from_db_at(cursor):$/;"	f
+retrieve_data_from_db_at	privacyengine.py	/^def retrieve_data_from_db_at(cursor, at):$/;"	f
 search_rules	views.py	/^def search_rules(request):$/;"	f
 status	views.py	/^def status(request):$/;"	f
 test	views.py	/^def test(request):$/;"	f
