@@ -17,11 +17,11 @@ def foo():
 	print 'sum = ' + str(s)
 
 
-#h=hpy()
-#foo()
-#h.heap()
+h=hpy()
+foo()
+h.heap()
 
-cProfile.run('foo()')
-prof = hotshot.Profile('foo_prof_log')
-prof.runcall(foo)
-prof.close()
+#cProfile.run('foo()')
+#prof = hotshot.Profile('foo_prof_log')
+#prof.runcall(foo)
+#prof.close()

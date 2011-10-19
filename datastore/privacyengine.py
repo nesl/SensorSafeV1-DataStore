@@ -1,33 +1,40 @@
 import time
+import hashlib, random 
 from log import log
+from log import logp
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 import pymongo
-from hotshotdecorator import hotshot_profile
+from profiling_decorator import hotshot_heapy_profile
+from googlemaps import GoogleMaps
+import obfuscation
 
 import cjson
 import json
+# do this in views.py too
 # To switch to cjson: ,cjson
 # To switch to json: ,json
 
 
 
 
-# Default Privacy Engine Options: Best performance
-FILTER_BY_MERGING_CONDITIONS = True # DONE
-FILTER_BY_SET_OPERATIONS = not FILTER_BY_MERGING_CONDITIONS
+# Default Privacy Engine database processing Options
+FILTER_BY_BOOLEAN_OPERATIONS = True
+FILTER_BY_SET_OPERATIONS = not FILTER_BY_BOOLEAN_OPERATIONS
 
 ON_THE_FLY_WAVESEG_MODIFICATION = True
 WAVESEG_MODIFY_AND_SAVE = not ON_THE_FLY_WAVESEG_MODIFICATION
 
-ON_THE_FLY_WAVESEG_PROCESSING = True
-PRE_QUERY_WAVESEG_PROCESSING = not ON_THE_FLY_WAVESEG_PROCESSING
+ON_THE_FLY_WAVESEG_SPLIT = False
+PRE_QUERY_WAVESEG_SPLIT = not ON_THE_FLY_WAVESEG_SPLIT
 
 
+GOOGLE_APIKEY = 'ABQIAAAA-BHV3Z55zCdo4z_ley123xT2yXp_ZAY8_ufC3CFXhHIE1NvwkxTGit_DA3cmLDETSlrEJ5l9J2xRaQ'
+gmaps = GoogleMaps(GOOGLE_APIKEY)
 
 
 # TODO: Consolidate HTTP response messages. JSON format.
-HTTP_RESPONSE_NO_DATA = HttpResponse(cjson.encode([]))
-
+HTTP_RESPONSE_NO_DATA = HttpResponse(cjson.encode(['No data']))
+HTTP_RESPONSE_NO_QUERY_IN_MESSAGE = HttpResponse(cjson.encode(['No \"query\" in message.']))
 
 
 db = None
@@ -109,23 +116,6 @@ def process_repeat_time(query, collection):
 
 
 
-def reduce_address(address_str, level):
-	address = address_str.rsplit(', ', 3)
-	city = str(address[1])
-	state = str(address[2].split(' ')[0])
-	zipcode = str(address[2].split(' ')[1])
-	country = str(address[3])
-
-	if level == 'street':
-		return address_str
-	elif level == 'zipcode':
-		return zipcode
-	elif level == 'city':
-		return city + ', ' + state + ', ' + country
-	elif level == 'state':
-		return state + ', ' + country
-	elif level == 'country':
-		return country
 
 
 
@@ -135,114 +125,28 @@ def mean(l):
 
 
 
+
+
+
 def modify_waveseg(waveseg, modify_rule, first_timestamp):
-	gc_collection = db['geocode_cache']
+	global db
 
 	if 'location_resolution' in modify_rule:
-		if not modify_rule['location_resolution'] == 'dontmodify':
-			if not modify_rule['location_resolution'] == 'nolocation':
-				# find geocode
-				geocode = gc_collection.find_one({ 'location.latitude': waveseg['location']['latitude'], 'location.longitude': waveseg['location']['longitude'] })
+		obfuscation.generalize_location(waveseg, modify_rule['location_resolution'], db['geocode_cache'])
 
-				if not geocode:
-					address = gmaps.latlng_to_address(waveseg['location']['latitude'], waveseg['location']['longitude'])
-					gc_collection.insert({ 'location': waveseg['location'], 'address': address })
-				else:
-					address = geocode['address']
-
-				location = reduce_address(address, modify_rule['location_resolution'])
-				waveseg['location'] = location
-
-			# no location
-			else:
-				del waveseg['location']
-	
 	if 'timestamp_resolution' in modify_rule:
-		if not modify_rule['timestamp_resolution'] == 'dontmodify':
-			timestamp = time.localtime(waveseg['timestamp'])
-			# make timestamp relative time
-			waveseg['timestamp'] -= first_timestamp
-			# add 'time_info' field and store timestamp in specified time resolution
-			if modify_rule['timestamp_resolution'] == 'hour':
-				waveseg['time_info'] = time.strftime('%H:00, %m/%d/%Y', timestamp)
-			elif modify_rule['timestamp_resolution'] == 'day':
-				waveseg['time_info'] = time.strftime('%m/%d/%Y', timestamp)
-			elif modify_rule['timestamp_resolution'] == 'month':
-				waveseg['time_info'] = time.strftime('%d/%Y', timestamp)
-			elif modify_rule['timestamp_resolution'] == 'year':
-				waveseg['time_info'] = time.strftime('%Y', timestamp)
+		obfuscation.generalize_timestamp(waveseg, modify_rule['timestamp_resolution'], first_timestamp)
 
 	if 'sample_rate' in modify_rule:
-		for sample_rate_rule in modify_rule['sample_rate']:
-			if type(waveseg['data_channel']).__name__ == 'list':
-				num_channels = len(waveseg['data_channel'])
-				if sample_rate_rule[0] in waveseg['data_channel']:
-					#log('sample_rate: ' + str(sample_rate_rule[0]) + ', rate: ' + str(sample_rate_rule[1]))a
-					start_time = waveseg['timestamp']
-					new_interval = 1.0 / sample_rate_rule[1]
-					old_interval = waveseg['sampling_interval']
-					
-					#log('new_interval: ' + str(new_interval) + ', old_interval: ' + str(old_interval))
-				
-					cur_time = start_time
-					new_time = start_time
-					cur_values = []
-					for i in xrange(0,num_channels):
-						cur_values.append([])
-					new_data = []
+		obfuscation.quantize_data(waveseg, modify_rule['sample_rate'])
 
-					for value in waveseg['data']:
-						#log('  ' + str(cur_time) + ': ' + str(value))
-						if cur_time >= new_time and cur_time < new_time + new_interval:
-							for i in xrange(0,num_channels):
-								cur_values[i].append(value[i])
-						else:
-							#log(str(new_time) + ': ' + str(cur_values))
-							new_value = []
-							for i in xrange(0,num_channels):
-								new_value.append(mean(cur_values[i]))
-								cur_values[i] = [value[i]]
-							new_data.append(new_value)
+	if 'hide_home' in modify_rule:
+		obfuscation.hide_home(waveseg, modify_rule['sample_rate'], db['home_location'])
 
-							new_time += new_interval
-						cur_time += old_interval
-					
-					new_value = []
-					for i in xrange(0,num_channels):
-						new_value.append(mean(cur_values[i]))
-					new_data.append(new_value)
-					
-					#log(new_data)
-					waveseg['data'] = new_data
-					waveseg['sampling_interval'] = new_interval
-			else:
-				if waveseg['data_channel'] == sample_rate_rule[0]:
-					#log('sample_rate: ' + str(sample_rate_rule[0]) + ', rate: ' + str(sample_rate_rule[1]))a
-					start_time = waveseg['timestamp']
-					new_interval = 1.0 / sample_rate_rule[1]
-					old_interval = waveseg['sampling_interval']
-					
-					#log('new_interval: ' + str(new_interval) + ', old_interval: ' + str(old_interval))
-				
-					cur_time = start_time
-					new_time = start_time
-					cur_values = []
-					new_data = []
-					for value in waveseg['data']:
-						#log('  ' + str(cur_time) + ': ' + str(value))
-						if cur_time >= new_time and cur_time < new_time + new_interval:
-							cur_values.append(value)
-						else:
-							#log(str(new_time) + ': ' + str(cur_values))
-							new_data.append(mean(cur_values))
-							cur_values = [value]
-							new_time += new_interval
-						cur_time += old_interval
-					new_data.append(mean(cur_values))
+	# Add your obfuscation algorithm here.
 
-					#log(new_data)
-					waveseg['data'] = new_data
-					waveseg['sampling_interval'] = new_interval
+
+
 
 
 
@@ -256,12 +160,15 @@ def create_temporary_collection(filtered_result, collection):
 		for id in filtered_result:
 			new_collection.insert(collection.find_one(id))
 
-	elif FILTER_BY_MERGING_CONDITIONS:
+	elif FILTER_BY_BOOLEAN_OPERATIONS:
 		# TODO: does this work?
-		new_collection.insert(collection.find(filtered_result))	
+		cursor = collection.find(filtered_result)
+		if cursor.count() > 0:
+			new_collection.insert(cursor)
+		else:
+			return None
 
-	# Replace current collection.
-	collection = new_collection
+	return new_collection
 
 
 
@@ -273,7 +180,7 @@ def get_first_timestamp(collection):
 
 
 
-def process_modify_rules_on_the_fly_with_retrieve_data(modify_result, collection = None, cursor = None, query_result = None):
+def process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collection = None, cursor = None, query_result = None):
 	
 	data = []
 
@@ -299,12 +206,12 @@ def process_modify_rules_on_the_fly_with_retrieve_data(modify_result, collection
 					modify_waveseg(obj, modify_rule, first_timestamp)
 			data.append(obj)
 
-	elif FILTER_BY_MERGING_CONDITIONS:
+	elif FILTER_BY_BOOLEAN_OPERATIONS:
 		# loop through modification list and add it to the return data.
-		modified_id_set = ()
+		modified_id_set = set()
 		for target_ids, modify_rule in modify_result:
 			for id in target_ids:
-				modified_id_set.insert(id)
+				modified_id_set.add(id)
 				waveseg = collection.find_one(id)
 				if waveseg:
 					modify_waveseg(waveseg, modify_rule, first_timestamp)
@@ -345,9 +252,12 @@ def process_modify_rules(modify_result, collection, query_result = None, merged_
 	
 	# Make new collection with filtered wavesegs
 	if FILTER_BY_SET_OPERATIONS:
-		create_temporary_collection(query_result, collection)
-	elif FILTER_BY_MERGING_CONDITIONS:
-		create_temporary_collection(merged_query, collection)
+		collection = create_temporary_collection(query_result, collection)
+	elif FILTER_BY_BOOLEAN_OPERATIONS:
+		collection = create_temporary_collection(merged_query, collection)
+
+	if collection is None:
+		return HTTP_RESPONSE_NO_DATA
 
 	# TODO: check if this takes time!
 	first_timestamp = collection.find().sort('timestamp', pymongo.ASCENDING)[0]['timestamp']	
@@ -363,8 +273,8 @@ def process_modify_rules(modify_result, collection, query_result = None, merged_
 
 
 # TODO: bugs in processing time. add support for location range
-def pre_query_waveseg_processing(username, collection, message, rules, consumer):
-	#log('--- start of pre_query_waveseg_processing() ---')
+def pre_query_waveseg_split(username, collection, message, rules, consumer):
+	#log('--- start of pre_query_waveseg_split() ---')
 
 	time_boundaries = []
 
@@ -477,7 +387,7 @@ def pre_query_waveseg_processing(username, collection, message, rules, consumer)
 
 	#log('new_collection count: ' + str(new_collection.find().count()))
 
-	#log('--- end of pre_query_waveseg_processing() ---')
+	#log('--- end of pre_query_waveseg_split() ---')
 	return True, temp_collection_name
 
 
@@ -516,7 +426,7 @@ def condition_preprocessing(condition_object, username):
 
 
 
-def get_set_of_distinct_ids_from_query_result(message, collection, username):
+def get_set_of_distinct_ids_from_query(message, collection, username):
 	if 'query' in message and message['query']:
 		condition_preprocessing(message['query'], username)
 		return set(collection.find(message['query']).distinct('_id'))
@@ -527,10 +437,24 @@ def get_set_of_distinct_ids_from_query_result(message, collection, username):
 
 
 
+def clean_up_merged_query(merged_query):
+	if merged_query:
+		if not merged_query['$and'][1]['$or']:
+			merged_query['$and'].pop(1)
+		if '$nor' in merged_query:
+			if not merged_query['$nor']:
+				del merged_query['$nor']
 
-def get_allow_deny_modify_sets_or_merged_query(allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection):
+
+
+
+
+def get_sets_or_merge_conds(message, allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection):
+	
+
+
 	for rule in rule_cursor:
-		log('rule: ' + str(rule))
+		#log('rule: ' + str(rule))
 
 		if 'consumer' in rule:
 			del rule['consumer']
@@ -548,7 +472,7 @@ def get_allow_deny_modify_sets_or_merged_query(allow_result, deny_result, modify
 				if FILTER_BY_SET_OPERATIONS:
 					allow_result.append(set(collection.find(rule).distinct('_id')))
 		
-				if FILTER_BY_MERGING_CONDITIONS:
+				if FILTER_BY_BOOLEAN_OPERATIONS:
 						merged_query['$and'][1]['$or'].append(rule)
 
 			elif rule['action'] == 'modify':
@@ -566,7 +490,7 @@ def get_allow_deny_modify_sets_or_merged_query(allow_result, deny_result, modify
 				if FILTER_BY_SET_OPERATIONS:
 					deny_result.append(set(collection.find(rule).distinct('_id')))
 				
-				if FILTER_BY_MERGING_CONDITIONS:
+				if FILTER_BY_BOOLEAN_OPERATIONS:
 					# Filtering w/ query condition merging
 					merged_query['$nor'].append(rule)
 
@@ -576,23 +500,16 @@ def get_allow_deny_modify_sets_or_merged_query(allow_result, deny_result, modify
 		else:
 			assert False # there is no rule['action']
 
+	clean_up_merged_query(merged_query)
+	#log('merged_query = ' + str(merged_query))
+	
+	return get_set_of_distinct_ids_from_query(message, collection, username)
 
 
 
 
 
-def clean_up_merged_query(merged_query):
-	if not merged_query['$nor']:
-		del merged_query['$nor']
-	if '$and' in merged_query:
-		if not merged_query['$and']:
-			del merged_query['$and']
-	if '$or' in merged_query:
-		if not merged_query['$or']:
-			del merged_query['$or']
 
-	if not merged_query:
-		assert False # empty merged_query{}
 
 
 
@@ -638,6 +555,17 @@ def retrieve_data_from_db_at(cursor, at):
 
 
 
+def retrieve_data_from_db_limit(cursor, limit):
+	if cursor.count() <= 0:
+		return None
+
+	data = []
+	for obj in cursor.limit(limit):
+		logp('in cursor.limit:', obj['sensor_name'])
+		data.append(obj)
+	return data
+
+
 
 
 def encode_data_to_json(data):
@@ -646,23 +574,23 @@ def encode_data_to_json(data):
 
 
 
+
 # TODO: when FILTER_BY_SET_OPERATION, track and check relationships among cursor, collection, and query options... something is weird.
 # check if query options are properly processed with FILTER_BY_SET_OPERATION.
-
-#@hotshot_profile("PrivacyEngine.prof")
+#@hotshot_heapy_profile("process_query")
 def process_query(dbConnection, request, message, isConsumer, consumer, username, collection, processing_options):
-	global db, FILTER_BY_MERGING_CONDITIONS, FILTER_BY_SET_OPERATIONS, ON_THE_FLY_WAVESEG_MODIFICATION, WAVESEG_MODIFY_AND_SAVE, ON_THE_FLY_WAVESEG_PROCESSING, PRE_QUERY_WAVESEG_PROCESSING
+	global db, FILTER_BY_BOOLEAN_OPERATIONS, FILTER_BY_SET_OPERATIONS, ON_THE_FLY_WAVESEG_MODIFICATION, WAVESEG_MODIFY_AND_SAVE, ON_THE_FLY_WAVESEG_SPLIT, PRE_QUERY_WAVESEG_SPLIT
 
 	# Set processing options.
 	if processing_options:
-		FILTER_BY_MERGING_CONDITIONS = processing_options['filter_by_merging_conditions']
-		FILTER_BY_SET_OPERATIONS = not FILTER_BY_MERGING_CONDITIONS
+		FILTER_BY_BOOLEAN_OPERATIONS = processing_options['FILTER_BY_BOOLEAN_OPERATIONS']
+		FILTER_BY_SET_OPERATIONS = not FILTER_BY_BOOLEAN_OPERATIONS
 
-		ON_THE_FLY_WAVESEG_MODIFICATION = processing_options['on-the-fly_waveseg_modification']
+		ON_THE_FLY_WAVESEG_MODIFICATION = processing_options['ON_THE_FLY_WAVESEG_MODIFICATION']
 		WAVESEG_MODIFY_AND_SAVE = not ON_THE_FLY_WAVESEG_MODIFICATION
 
-		ON_THE_FLY_WAVESEG_PROCESSING = processing_options['on-the-fly_waveseg_processing']
-		PRE_QUERY_WAVESEG_PROCESSING = not ON_THE_FLY_WAVESEG_PROCESSING
+		ON_THE_FLY_WAVESEG_SPLIT = processing_options['ON_THE_FLY_WAVESEG_SPLIT']
+		PRE_QUERY_WAVESEG_SPLIT = not ON_THE_FLY_WAVESEG_SPLIT
 
 	db = dbConnection
 	
@@ -671,11 +599,14 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 	log('########### NEW QUERY ##############')
 	log('query: ' + str(message))
 
+	if 'query' not in message:
+		return HTTP_RESPONSE_NO_QUERY_IN_MESSAGE
+
 	# Let's do privacy filtering.
 	cursor = None
 	waveseg_pre_temp_collection_name = None
 	temp_collection_name = None
-	isQueryOptions = 'select' in message or 'distinct' in message or 'sort' in message or 'at' in message
+	isQueryOptions = len(message.items()) > 1 # Is there any key other than 'query'?
 
 	# when the querier is data consumer
 	if isConsumer: 	
@@ -692,13 +623,13 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 		else:
 			# Pre-query waveseg processing for range queries	
 			# Note: this is needed only for range queries, and this checking is done in the function because we also need to check if any rules contain range conditions.
-			if PRE_QUERY_WAVESEG_PROCESSING:
-				result, waveseg_pre_temp_collection_name = pre_query_waveseg_processing(username, collection, message, rules, consumer)
+			if PRE_QUERY_WAVESEG_SPLIT:
+				result, waveseg_pre_temp_collection_name = pre_query_waveseg_split(username, collection, message, rules, consumer)
 				if result:
 					collection = db[waveseg_pre_temp_collection_name]
 
 			merged_query = None
-			if FILTER_BY_MERGING_CONDITIONS:
+			if FILTER_BY_BOOLEAN_OPERATIONS:
 				# UNION of allowed wavesegs, AND queried wavesegs, MINUS denied wavesegs
 				merged_query = { '$and': [ message['query'], { '$or': [] } ], '$nor': [] }
 
@@ -710,18 +641,12 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 			if FILTER_BY_SET_OPERATIONS:
 				allow_result = []
 				deny_result = []
-				query_result = get_set_of_distinct_ids_from_query_result(message, collection, username)
 
 			# Get sets of wavesegs to-be-allowed, -denied, and -modified.
-			get_allow_deny_modify_sets_or_merged_query(allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection)
-
-			# Clean up merged_query
-			if FILTER_BY_MERGING_CONDITIONS:
-				clean_up_merged_query(merged_query)
-				log('merged_query = ' + str(merged_query))
+			query_result = get_sets_or_merge_conds(message, allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection)
 
 			# Perform set operations to get filtered query result.
-			elif FILTER_BY_SET_OPERATIONS:
+			if FILTER_BY_SET_OPERATIONS:
 				perform_set_operation(query_result, allow_result, deny_result)
 
 				# after applying allow and deny rules, if nothing left...
@@ -729,35 +654,39 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 					return HTTP_RESPONSE_NO_DATA
 
 			# Good. Process field selection for data consumer. Here we are going to process field selection first before processing other query options. Further query options are processed in the 'if isQueryOptions' block down below. The only difference between in case of query by data consumer and contributor is this field selection processing. It's all because mongoDB supports field selection as an argument of find(). Further reasons are explained down below, too.
-			
-			if 'select' in message:
-				
+		
+			if 'select' in message or not ON_THE_FLY_WAVESEG_MODIFICATION:
+
 				# Do process_modify_rules() here because the field selection afterwards might remove conditions required by modify_rules.				
 				# TODO: on-the-fly field selection might solve this problem.
 				if len(modify_result) > 0:
 					if FILTER_BY_SET_OPERATIONS:
 						process_modify_rules(modify_result, collection, query_result = query_result)
-					elif FILTER_BY_MERGING_CONDITIONS:
+					elif FILTER_BY_BOOLEAN_OPERATIONS:
 						process_modify_rules(modify_result, collection, merged_query = merged_query)
 
-				# Process field selection
-				select = message['select']
+				if 'select' in message:
+					select = message['select']
+				else:
+					select = {}
+
+				# Here, we remove _id field because we don't need the on-the-fly waveseg modification.
 				select['_id'] = 0 # deselect _id field
 				if FILTER_BY_SET_OPERATIONS:
 					cursor = collection.find(None, select)
-				if FILTER_BY_MERGING_CONDITIONS:
+				if FILTER_BY_BOOLEAN_OPERATIONS:
 					cursor = collection.find(merged_query, select)
-			
+
 			else: # no query options
 				# Here, we don't remove _id field because of the on-the-fly waveseg modification.
 				if FILTER_BY_SET_OPERATIONS:
 					cursor = collection.find() 
-				elif FILTER_BY_MERGING_CONDITIONS:
+				elif FILTER_BY_BOOLEAN_OPERATIONS:
 					cursor = collection.find(merged_query)
 
 			if FILTER_BY_SET_OPERATIONS:
 				log('after filtering, len(query_result) = ' + str(len(query_result)))
-			elif FILTER_BY_MERGING_CONDITIONS:
+			elif FILTER_BY_BOOLEAN_OPERATIONS:
 				log('after filtering: find(merged_query).count() = ' + str(cursor.count()))
 
 
@@ -765,8 +694,8 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 	else:
 		
 		# waveseg processing for range queries
-		if PRE_QUERY_WAVESEG_PROCESSING:
-			result, waveseg_pre_temp_collection_name = pre_query_waveseg_processing(username, collection, message, None, None)
+		if PRE_QUERY_WAVESEG_SPLIT:
+			result, waveseg_pre_temp_collection_name = pre_query_waveseg_split(username, collection, message, None, None)
 			if result:
 				collection = db[waveseg_pre_temp_collection_name]
 		
@@ -808,13 +737,16 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 		if 'distinct' in message and message['distinct']:
 			cursor = cursor.distinct(message['distinct'])
 
-		# Data retrieval with 'at' query option.
+		# Data retrieval with 'at' or 'limit' query option.
 		if 'at' in message and message['at']:
 			data = retrieve_data_from_db_at(cursor, message['at'])
 			if not data:
 				return HTTP_RESPONSE_NO_DATA
+		elif 'limit' in message and message['limit']:
+			data = retrieve_data_from_db_limit(cursor, message['limit'])
+			if not data:
+				return HTTP_RESPONSE_NO_DATA
 		else:
-			# Data retrieval
 			data = retrieve_data_from_db(cursor)
 			if not data:
 				return HTTP_RESPONSE_NO_DATA
@@ -824,19 +756,22 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 		if not isConsumer:
 			# Data retreival
 			data = retrieve_data_from_db(cursor)
-			if not data:
-				return HTTP_RESPONSE_NO_DATA
 		else:
 			# Retreive data object and perform modify rules "on-the-fly".
-			if FILTER_BY_SET_OPERATIONS:
-				data = process_modify_rules_on_the_fly_with_retrieve_data(modify_result, collection = collection, query_result = query_result)
-				if not data:
-					return HTTP_RESPONSE_NO_DATA
-			elif FILTER_BY_MERGING_CONDITIONS:
-				# This also perform on-the-fly waveseg modification.
-				data = process_modify_rules_on_the_fly_with_retrieve_data(modify_result, collection = collection, cursor = cursor)
-				if not data:
-					return HTTP_RESPONSE_NO_DATA
+			if ON_THE_FLY_WAVESEG_MODIFICATION:
+				if FILTER_BY_SET_OPERATIONS:
+					data = process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collection = collection, query_result = query_result)
+				elif FILTER_BY_BOOLEAN_OPERATIONS:
+					# This also perform on-the-fly waveseg modification.
+					data = process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collection = collection, cursor = cursor)
+			else:
+				if FILTER_BY_SET_OPERATIONS:
+					data = retrieve_data_from_db(collection.find())
+				elif FILTER_BY_BOOLEAN_OPERATIONS:
+					data = retrieve_data_from_db(cursor)
+
+		if not data:
+			return HTTP_RESPONSE_NO_DATA
 
 	# Alright, we are almost done. let's json-encode it.
 	json_data = encode_data_to_json(data)

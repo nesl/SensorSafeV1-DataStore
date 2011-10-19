@@ -1,4 +1,6 @@
+import subprocess
 import sys
+import hashlib, random 
 import time
 from datetime import datetime, timedelta
 import httplib, urllib
@@ -10,41 +12,39 @@ from sensorsafe.datastore.forms import *
 from django.core.exceptions import *
 from django.contrib.auth.models import User as authUser
 from django.contrib.auth import authenticate, login, logout
-import hashlib, random 
+
 from sensorsafe.datastore.models import *
 from django.template import RequestContext
-from googlemaps import GoogleMaps
+
 from threading import Lock
 from copy import copy, deepcopy
 import math
 from log import log
-from hotshotdecorator import hotshot_profile
+from profiling_decorator import hotshot_heapy_profile
+
+import settings
+import os
+import hotshot
+from guppy import hpy
 
 import cjson
 import json
+# do this in privacyengine.py
 # To switch to cjson: ,cjson
 # To switch to json: ,json
-
-# for memory profiling
-from guppy import hpy
 
 import privacyengine
 
 
-
-# Flag for post-upload waveseg processing
-POST_UPLOAD_WAVESEG_PROCESSING = True
-NO_POST_UPLOAD_WAVESEG_PROCESSING = not POST_UPLOAD_WAVESEG_PROCESSING
-POST_UPLOAD_WAVESEG_PROCESSING_ADAPTIVE = False
 
 
 
 
 
 BROKER_ADDRESS = 'fieldstream.nesl.ucla.edu'
-GOOGLE_APIKEY = 'ABQIAAAA-BHV3Z55zCdo4z_ley123xT2yXp_ZAY8_ufC3CFXhHIE1NvwkxTGit_DA3cmLDETSlrEJ5l9J2xRaQ'
 
-gmaps = GoogleMaps(GOOGLE_APIKEY)
+
+
 db = pymongo.Connection()['sensorsafe_database']
 
 def print_error_context():
@@ -62,7 +62,8 @@ def json_dump_pretty_html(data):
 @login_required
 def status(request):
 	userinfo = UserProfile.objects.get(userID__exact = request.user)
-	return render_to_response('status.html', { 'apikey': userinfo.apiKey }, context_instance=RequestContext(request))
+	return render_to_response('status.html', { 'apikey': userinfo.apiKey }, \
+		context_instance=RequestContext(request))
 
 
 
@@ -70,7 +71,7 @@ def check_post_request(postdata):
 	if not 'apikey' in postdata:
 		return False, None, HttpResponseBadRequest("No 'apikey' in post data")
 
-	if not 'message' in postdata:
+	if not ('message' in postdata or 'data' in postdata):
 		return False, None, HttpResponseBadRequest("No 'message' in post data")
 
 	try:
@@ -110,8 +111,6 @@ def upload(request):
 		collection = db[username]
 	waveseg = cjson.decode(request.POST['data'])
 	collection.insert(waveseg)
-
-	#TODO: POST_UPLOAD_WAVESEG_PROCESSING
 
 	return HttpResponse("Upload successful (" + username + ")")
 
@@ -213,7 +212,7 @@ def register(request, url=None):
 
 
 
-@hotshot_profile("PrivacyEngine.prof")
+#@hotshot_heapy_profile("query")
 def query(request):
 	# Prepare for query processing.
 
@@ -279,17 +278,67 @@ def query(request):
 	else:
 		processing_options = None
 
-	# TODO: clean up this!
-	#collection = db[username]
-	collection = db[username + '_testdata_opt']
+	# Get the collection!
+	collection = db[username]
+	
+	# TODO: check if this takes time... do this only we use location range queries.
 	collection.ensure_index([('location', pymongo.GEO2D)])
 
 	# Yes... ensure index on the collection (w/o it, slow..)
 	collection.ensure_index('_id')
 
-	#h=hpy()
-	ret = privacyengine.process_query(db, request, message, isConsumer, consumer,  username, collection, processing_options)
-	#h.heap()
+	if processing_options \
+		and 'profiling' in processing_options \
+		and processing_options['profiling']:
+
+		# prepare for profiling
+		try:
+			PROFILE_LOG_BASE = settings.PROFILE_LOG_BASE
+		except:
+			assert False # No PROFILE_LOG_BASE in settings.py
+		
+		log_file = 'profile'
+		
+		hotshot_log_file = os.path.join(PROFILE_LOG_BASE, 'hotshot_' + log_file)
+		heapy_before_log_file = os.path.join(PROFILE_LOG_BASE, 'heapy_before_' + log_file)
+		heapy_after_log_file = os.path.join(PROFILE_LOG_BASE, 'heapy_after_' + log_file)
+		#heapy_log_file = os.path.join(PROFILE_LOG_BASE, log_file + '.heapy')
+
+		# Add hash to the filename for multithreaded execution.
+		hash = '_' + hashlib.sha1(str(random.random())).hexdigest()
+		
+		# Add a timestamp to the profile output when the callable is actually called.
+		timestamp = time.strftime("_%Y%m%d-%H%M%S", time.localtime())
+				
+		(base, ext) = os.path.splitext(hotshot_log_file)
+		base += hash
+		#base += timestamp
+		hotshot_log_file = base + ext
+		
+		(base, ext) = os.path.splitext(heapy_before_log_file)
+		base += hash
+		#base += timestamp
+		heapy_before_log_file = base + ext
+
+		(base, ext) = os.path.splitext(heapy_after_log_file)
+		base += hash
+		#base += timestamp
+		heapy_after_log_file = base + ext
+
+		prof = hotshot.Profile(hotshot_log_file)
+		h = hpy()
+		hpyresult = h.heap()
+		hpyresult.dump(heapy_before_log_file)
+		try:
+			ret = prof.runcall(privacyengine.process_query, db, request, message, isConsumer, consumer,  username, collection, processing_options)
+		finally:
+			prof.close()
+			hpyresult = h.heap()
+			hpyresult.dump(heapy_after_log_file)
+			# subprocess.Popen(['/home/haksoo/profile-logs/parse_and_cp'])
+	else:
+		# with out profiling
+		ret = privacyengine.process_query(db, request, message, isConsumer, consumer,  username, collection, processing_options)
 
 	return ret
 
@@ -712,6 +761,9 @@ def search_rules(request):
 			satisfy_users.append(username)
 	
 	return HttpResponse(cjson.encode(satisfy_users))
+
+
+
 
 
 @login_required
