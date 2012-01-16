@@ -1,3 +1,5 @@
+import time
+
 def reduce_address(address_str, level):
 	
 	# support for south korea address

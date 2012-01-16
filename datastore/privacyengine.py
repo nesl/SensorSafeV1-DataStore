@@ -149,11 +149,16 @@ def modify_waveseg(waveseg, modify_rule, first_timestamp):
 
 
 
-
+temp_collection_list = []
 def create_temporary_collection(filtered_result, collection):
+	global temp_collection_list
+
 	# Create a new collection
 	temp_collection_name = 'temp_' + hashlib.sha1(str(random.random())).hexdigest()
 	new_collection = db[temp_collection_name]
+
+	# for clean up
+	temp_collection_list.append(temp_collection_name)
 
 	if FILTER_BY_SET_OPERATIONS:
 		# Insert the query result into the new collection
@@ -161,10 +166,10 @@ def create_temporary_collection(filtered_result, collection):
 			new_collection.insert(collection.find_one(id))
 
 	elif FILTER_BY_BOOLEAN_OPERATIONS:
-		# TODO: does this work?
 		cursor = collection.find(filtered_result)
 		if cursor.count() > 0:
-			new_collection.insert(cursor)
+			for obj in cursor:
+				new_collection.insert(obj)
 		else:
 			return None
 
@@ -180,8 +185,7 @@ def get_first_timestamp(collection):
 
 
 
-def process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collection = None, cursor = None, query_result = None):
-	
+def retrieve_data_otf_mod(modify_result, collection = None, cursor = None, query_result = None):
 	data = []
 
 	# If no modification, add wavesegs to the return data
@@ -189,7 +193,8 @@ def process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collectio
 		if not cursor:
 			cursor = collection.find()
 		for waveseg in cursor:
-			del waveseg['_id']
+			if '_id' in waveseg:
+				del waveseg['_id']
 			data.append(waveseg)
 		return data
 
@@ -220,7 +225,7 @@ def process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collectio
 
 		# We also need to add unmodified wavesegs to the return data.
 		for waveseg in cursor:
-			if not waveseg['_id'] in modified_id_set:
+			if not (waveseg['_id'] in modified_id_set):
 				del waveseg['_id']
 				data.append(waveseg)
 
@@ -229,7 +234,7 @@ def process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collectio
 
 
 
-def process_modify_rules(modify_result, collection, query_result = None, merged_query = None):
+def modify_and_save(modify_result, collection, query_result = None, merged_query = None):
 	# process modify_rules()
 	#
 	# TODO: more performance optimization.
@@ -272,10 +277,9 @@ def process_modify_rules(modify_result, collection, query_result = None, merged_
 
 
 
-# TODO: bugs in processing time. add support for location range
-def pre_query_waveseg_split(username, collection, message, rules, consumer):
-	#log('--- start of pre_query_waveseg_split() ---')
 
+
+def get_time_boundaries(message, rules, consumer):
 	time_boundaries = []
 
 	# get time stamps in query
@@ -309,16 +313,29 @@ def pre_query_waveseg_split(username, collection, message, rules, consumer):
 
 	# if no time condition. return.
 	if len(time_boundaries) <= 0:
-		return False, None
+		return None
 
+	return time_boundaries
+
+
+
+
+
+# TODO: bugs in processing time. add support for location range
+def pre_query_waveseg_split(username, collection, message, rules, consumer, time_boundaries):
+	global temp_collection_list
+	
 	time_boundaries = list(set(time_boundaries))
 	#log('time_boundaries: ' + str(time_boundaries))
 
 	# make new collection
-	temp_collection_name = 'temp_' + hashlib.sha1(str(random.random())).hexdigest()
-	new_collection = db[temp_collection_name]
-	
-	#### split wavesegs in time boundaries and inser into the new collection ###
+	new_collection_name = 'temp_' + hashlib.sha1(str(random.random())).hexdigest()
+	new_collection = db[new_collection_name]
+
+	# for clean up
+	temp_collection_list.append(new_collection_name)
+
+	#### split wavesegs in time boundaries and insert into the new collection ###
 	data_channels = collection.find().distinct('data_channel')
 
 	# get data channels by handling multi channels
@@ -387,8 +404,7 @@ def pre_query_waveseg_split(username, collection, message, rules, consumer):
 
 	#log('new_collection count: ' + str(new_collection.find().count()))
 
-	#log('--- end of pre_query_waveseg_split() ---')
-	return True, temp_collection_name
+	return new_collection
 
 
 
@@ -449,9 +465,7 @@ def clean_up_merged_query(merged_query):
 
 
 
-def get_sets_or_merge_conds(message, allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection):
-	
-
+def prepare_sets_or_boolean(message, allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection):
 
 	for rule in rule_cursor:
 		#log('rule: ' + str(rule))
@@ -515,7 +529,7 @@ def get_sets_or_merge_conds(message, allow_result, deny_result, modify_result, m
 
 
 
-def perform_set_operation(query_result, allow_result, deny_result):
+def set_operation(query_result, allow_result, deny_result):
 	# UNION of allowed wavesegs, AND query result, MINUS denied wavesegs
 	
 	if allow_result:
@@ -530,15 +544,15 @@ def perform_set_operation(query_result, allow_result, deny_result):
 
 
 
-def retrieve_data_from_db(cursor):
+def retrieve_data(cursor):
 	data = []
-	for obj in cursor:
-		data.append(obj)
+	for waveseg in cursor:
+		data.append(waveseg)
 	return data
 
 
 
-def retrieve_data_from_db_at(cursor, at):
+def retrieve_data_at(cursor, at):
 	if cursor.count() <= 0:
 		return None
 
@@ -555,21 +569,34 @@ def retrieve_data_from_db_at(cursor, at):
 
 
 
-def retrieve_data_from_db_limit(cursor, limit):
-	if cursor.count() <= 0:
-		return None
-
+def retrieve_data_limit(cursor, limit):
 	data = []
-	for obj in cursor.limit(limit):
-		logp('in cursor.limit:', obj['sensor_name'])
-		data.append(obj)
+	for waveseg in cursor.limit(limit):
+		data.append(waveseg)
 	return data
+
 
 
 
 
 def encode_data_to_json(data):
 	return cjson.encode(data)
+
+
+
+
+
+
+def get_data_stat(data):
+	num_wavesegs = 0
+	num_samples = 0
+
+	for waveseg in data:
+		num_wavesegs += 1
+		num_samples += len(waveseg['data'])
+	
+	return ['num_wavesegs: %d, num_samples: %d' % (num_wavesegs, num_samples)] 
+	
 
 
 
@@ -599,14 +626,13 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 	log('########### NEW QUERY ##############')
 	log('query: ' + str(message))
 
-	if 'query' not in message:
-		return HTTP_RESPONSE_NO_QUERY_IN_MESSAGE
-
 	# Let's do privacy filtering.
 	cursor = None
-	waveseg_pre_temp_collection_name = None
-	temp_collection_name = None
-	isQueryOptions = len(message.items()) > 1 # Is there any key other than 'query'?
+
+	if 'query' in message:
+		isQueryOptions = len(message.items()) > 1 # Is there any key other than 'query'?
+	else:
+		isQueryOptions = len(message.items()) > 0
 
 	# when the querier is data consumer
 	if isConsumer: 	
@@ -617,16 +643,17 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 
 		# if there are no rules for this consumer
 		if rule_cursor.count() <= 0:
-			return HttpResponse('["No privacy rules for the consumer, %s"]' % consumer)
+			return HttpResponse('No privacy rules for the consumer, %s, so no data.' % consumer)
 		
 		# if rules exists
 		else:
 			# Pre-query waveseg processing for range queries	
 			# Note: this is needed only for range queries, and this checking is done in the function because we also need to check if any rules contain range conditions.
 			if PRE_QUERY_WAVESEG_SPLIT:
-				result, waveseg_pre_temp_collection_name = pre_query_waveseg_split(username, collection, message, rules, consumer)
-				if result:
-					collection = db[waveseg_pre_temp_collection_name]
+				time_boundaries = get_time_boundaries(message, rules, consumer)
+				if time_boundaries:
+					# waveseg_pre_query_split_collection
+					collection = pre_query_waveseg_split(username, collection, message, rules, consumer, time_boundaries)
 
 			merged_query = None
 			if FILTER_BY_BOOLEAN_OPERATIONS:
@@ -643,11 +670,11 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 				deny_result = []
 
 			# Get sets of wavesegs to-be-allowed, -denied, and -modified.
-			query_result = get_sets_or_merge_conds(message, allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection)
+			query_result = prepare_sets_or_boolean(message, allow_result, deny_result, modify_result, merged_query, rule_cursor, username, collection)
 
 			# Perform set operations to get filtered query result.
 			if FILTER_BY_SET_OPERATIONS:
-				perform_set_operation(query_result, allow_result, deny_result)
+				set_operation(query_result, allow_result, deny_result)
 
 				# after applying allow and deny rules, if nothing left...
 				if (len(query_result) <= 0):
@@ -657,32 +684,28 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 		
 			if 'select' in message or not ON_THE_FLY_WAVESEG_MODIFICATION:
 
-				# Do process_modify_rules() here because the field selection afterwards might remove conditions required by modify_rules.				
+				# Do modify_and_save() here because the field selection afterwards might remove conditions required by modify_rules.				
 				# TODO: on-the-fly field selection might solve this problem.
 				if len(modify_result) > 0:
 					if FILTER_BY_SET_OPERATIONS:
-						process_modify_rules(modify_result, collection, query_result = query_result)
+						modify_and_save(modify_result, collection, query_result = query_result)
 					elif FILTER_BY_BOOLEAN_OPERATIONS:
-						process_modify_rules(modify_result, collection, merged_query = merged_query)
+						modify_and_save(modify_result, collection, merged_query = merged_query)
 
-				if 'select' in message:
-					select = message['select']
-				else:
-					select = {}
+			if 'select' in message:
+				select = message['select']
+			else:
+				select = None
 
-				# Here, we remove _id field because we don't need the on-the-fly waveseg modification.
+			# On-the-fly waveseg modification need _id field.
+			if not ON_THE_FLY_WAVESEG_MODIFICATION:
 				select['_id'] = 0 # deselect _id field
-				if FILTER_BY_SET_OPERATIONS:
-					cursor = collection.find(None, select)
-				if FILTER_BY_BOOLEAN_OPERATIONS:
-					cursor = collection.find(merged_query, select)
-
-			else: # no query options
-				# Here, we don't remove _id field because of the on-the-fly waveseg modification.
-				if FILTER_BY_SET_OPERATIONS:
-					cursor = collection.find() 
-				elif FILTER_BY_BOOLEAN_OPERATIONS:
-					cursor = collection.find(merged_query)
+			
+			# Get the cursor!
+			if FILTER_BY_SET_OPERATIONS:
+				cursor = collection.find(None, select)
+			if FILTER_BY_BOOLEAN_OPERATIONS:
+				cursor = collection.find(merged_query, select)
 
 			if FILTER_BY_SET_OPERATIONS:
 				log('after filtering, len(query_result) = ' + str(len(query_result)))
@@ -695,9 +718,10 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 		
 		# waveseg processing for range queries
 		if PRE_QUERY_WAVESEG_SPLIT:
-			result, waveseg_pre_temp_collection_name = pre_query_waveseg_split(username, collection, message, None, None)
-			if result:
-				collection = db[waveseg_pre_temp_collection_name]
+			time_boundaries = get_time_boundaries(message, None, None)
+			if time_boundaries:
+				# waveseg_pre_query_split_collection 
+				collection = pre_query_waveseg_split(username, collection, message, None, None, time_boundaries)
 		
 		# Query condition pre-processing
 		if 'query' in message and message['query']:
@@ -707,15 +731,20 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 		if 'select' in message:
 			select = message['select']
 			select['_id'] = 0 # deselect _id field
+
 			if 'query' in message and message['query']:
 				cursor = collection.find(message['query'], select)
 			else:
 				cursor = collection.find(None, select)
+
 		else:
+
 			if 'query' in message and message['query']:
-				cursor = collection.find(message['query'], {'_id': 0})
+				cursor = collection.find(message['query'], {'_id': 0}) # TODO: check: need _id for otf_mod
+				#cursor = collection.find(message['query'])
 			else:
-				cursor = collection.find(None, {'_id': 0})
+				cursor = collection.find(None, {'_id': 0}) # TODO: check: need _id for otf_mod
+				#cursor = collection.find() 
 
 		log('cursor.count() = ' + str(cursor.count()))
 
@@ -739,15 +768,15 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 
 		# Data retrieval with 'at' or 'limit' query option.
 		if 'at' in message and message['at']:
-			data = retrieve_data_from_db_at(cursor, message['at'])
+			data = retrieve_data_at(cursor, message['at'])
 			if not data:
 				return HTTP_RESPONSE_NO_DATA
 		elif 'limit' in message and message['limit']:
-			data = retrieve_data_from_db_limit(cursor, message['limit'])
+			data = retrieve_data_limit(cursor, message['limit'])
 			if not data:
 				return HTTP_RESPONSE_NO_DATA
 		else:
-			data = retrieve_data_from_db(cursor)
+			data = retrieve_data(cursor)
 			if not data:
 				return HTTP_RESPONSE_NO_DATA
 
@@ -755,34 +784,44 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 	else:
 		if not isConsumer:
 			# Data retreival
-			data = retrieve_data_from_db(cursor)
+			data = retrieve_data(cursor)
 		else:
 			# Retreive data object and perform modify rules "on-the-fly".
 			if ON_THE_FLY_WAVESEG_MODIFICATION:
 				if FILTER_BY_SET_OPERATIONS:
-					data = process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collection = collection, query_result = query_result)
+					data = retrieve_data_otf_mod(modify_result, collection = collection, query_result = query_result)
 				elif FILTER_BY_BOOLEAN_OPERATIONS:
 					# This also perform on-the-fly waveseg modification.
-					data = process_modify_rules_on_the_fly_with_data_retrieval(modify_result, collection = collection, cursor = cursor)
+					data = retrieve_data_otf_mod(modify_result, collection = collection, cursor = cursor)
+
 			else:
 				if FILTER_BY_SET_OPERATIONS:
-					data = retrieve_data_from_db(collection.find())
+					data = retrieve_data(collection.find(None, {'_id': 0}))
 				elif FILTER_BY_BOOLEAN_OPERATIONS:
-					data = retrieve_data_from_db(cursor)
+					data = retrieve_data(cursor)
 
 		if not data:
 			return HTTP_RESPONSE_NO_DATA
 
+	if type(data) is not list:
+		data = [ data ]
+
+	# For benchmark test.
+	if 'processing_options' in request.POST:
+		stat_data = get_data_stat(data)
+		
 	# Alright, we are almost done. let's json-encode it.
 	json_data = encode_data_to_json(data)
 
-
 	# Clean up temp collection
-	if temp_collection_name:
-		db.drop_collection(temp_collection_name)
-	if waveseg_pre_temp_collection_name:
-		db.drop_collection(waveseg_pre_temp_collection_name)
+	if temp_collection_list:
+		for collection in temp_collection_list:
+			db.drop_collection(collection)
 
-	return HttpResponse(json_data)
+	# For benchmark test.
+	if 'processing_options' in request.POST:
+		return HttpResponse(stat_data)
+	else:	
+		return HttpResponse(json_data)
 
 

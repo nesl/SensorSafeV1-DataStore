@@ -20,6 +20,7 @@ from threading import Lock
 from copy import copy, deepcopy
 import math
 from log import log
+from log import logp
 from profiling_decorator import hotshot_heapy_profile
 
 import settings
@@ -106,13 +107,31 @@ def upload(request):
 	username = userinfo.userID.username
 
 	if 'collection_name' in request.POST:
-		collection = db[request.POST['collection_name']]
+		logp('upload:', request.POST['collection_name'])
+		collection_name = request.POST['collection_name']	
 	else:
-		collection = db[username]
-	waveseg = cjson.decode(request.POST['data'])
-	collection.insert(waveseg)
+		collection_name = username
 
-	return HttpResponse("Upload successful (" + username + ")")
+	collection = db[collection_name]
+	waveseg = cjson.decode(request.POST['data'])
+	
+	# Calculate timestamp when there is none.
+	if 'timestamp' not in waveseg:
+		# get time stamp channel index
+		try: 
+			time_i = waveseg['data_channel'].index('Timestamp')
+		except ValueError:
+			time_i = waveseg['data_channel'].index('timestamp')
+		
+		# get first timestamp and sampling_interval
+		waveseg['timestamp'] = float(waveseg['data'][0][time_i])
+		last_timestamp = float(waveseg['data'][-1][time_i])
+		waveseg['sampling_interval'] = (last_timestamp - waveseg['timestamp']) / (len(waveseg['data']) - 1)
+
+	collection.insert(waveseg)
+	
+	return HttpResponse("Upload successful (Collection name: " \
+											+ collection_name + ", Requested by " + username)
 
 
 
@@ -279,7 +298,12 @@ def query(request):
 		processing_options = None
 
 	# Get the collection!
-	collection = db[username]
+	if 'collection_name' in request.POST and request.POST['collection_name']:
+		collection = db[request.POST['collection_name']]
+	else:
+		collection = db[username]
+
+	# return HttpResponse('Hello there,')
 	
 	# TODO: check if this takes time... do this only we use location range queries.
 	collection.ensure_index([('location', pymongo.GEO2D)])
@@ -287,10 +311,7 @@ def query(request):
 	# Yes... ensure index on the collection (w/o it, slow..)
 	collection.ensure_index('_id')
 
-	if processing_options \
-		and 'profiling' in processing_options \
-		and processing_options['profiling']:
-
+	if processing_options and 'profiling' in processing_options and processing_options['profiling']:
 		# prepare for profiling
 		try:
 			PROFILE_LOG_BASE = settings.PROFILE_LOG_BASE
@@ -339,6 +360,12 @@ def query(request):
 	else:
 		# with out profiling
 		ret = privacyengine.process_query(db, request, message, isConsumer, consumer,  username, collection, processing_options)
+
+	# if it's profiled, copy the result for download.
+	if processing_options and 'profiling' in processing_options and processing_options['profiling']:
+		# Be careful. This might takes long time for long query processing
+		os.system('cd /home/haksoo/profile-logs && ./parse_and_cp')
+		#os.system('cd /home/haksoo/profile-logs && ./sleep_test')
 
 	return ret
 
