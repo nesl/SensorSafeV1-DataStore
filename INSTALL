@@ -1,10 +1,31 @@
 SensorSafe Data Store Installation Guide
 
-Dependencies
-1.Python 2.X(2.6 and 2.7 have been tested to be working)
-2.Django 1.2+(Both Django 1.2 and 1.3 have been verified)
-3.
 
-Notes.
-+ All communications with the server are HTTPS.  HTTP connections will be simply rejected.
+Dependencies
+
+1. Ubuntu (11.10 and 9.04 have been tested)
+2. Python 2.x (2.6 and 2.7 have been tested)
+3. Django 1.3+ (1.3.1 has been tested)
+4. mongoDB (1.8.2 and 2.0.0 has been tested)
+
+	
+Installation Steps
+
+# git clone 
+# cd sensorsafe
+
+Edit PROJECT_PATH in setting.py to point your project location.
+
+# sudo apt-get install mongodb python-pymongo python-guppy python-cjson 
+
+ Download googlemaps-1.0.2.tar.gz from http://sourceforge.net/projects/py-googlemaps/files/latest/download
+
+# tar xvzf googlemaps-1.0.2.tar.gz
+# cd googlemaps-1.0.2
+# sudo python setup.py install
+
+# python manage.py runserver
+
+Luanch your favorite web browser and connect to http://localhost:8000.  You should now see the SensorSafe login page.
+
 
