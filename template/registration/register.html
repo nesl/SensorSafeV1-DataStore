@@ -12,6 +12,7 @@
 {% endif %}
 
 <form method="post" action="/register/">
+{% csrf_token %}
 <table>
 {% for field in form %}
 <tr><th>

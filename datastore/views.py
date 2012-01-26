@@ -22,6 +22,7 @@ import math
 from log import log
 from log import logp
 from profiling_decorator import hotshot_heapy_profile
+from django.views.decorators.csrf import csrf_exempt
 
 import settings
 import os
@@ -95,8 +96,7 @@ def check_post_request_apikey(postdata):
 
 	return True, userinfo, None
 
-
-
+@csrf_exempt
 def upload(request):
 	if request.method != 'POST':
 		return HttpResponseBadRequest('Not POST request')
@@ -150,7 +150,7 @@ def logout_view(request):
 	logout(request)
 	return HttpResponseRedirect('/login/')
 
-
+@csrf_exempt
 def register(request, url=None):
 	errorMsg = []
 	if request.method == 'POST':
@@ -232,6 +232,7 @@ def register(request, url=None):
 
 
 #@hotshot_heapy_profile("query")
+@csrf_exempt
 def query(request):
 	# Prepare for query processing.
 
@@ -376,7 +377,7 @@ def display(request):
 	return render_to_response('display2.html', { 'apikey': userinfo.apiKey }, context_instance=RequestContext(request))
 
 
-
+@csrf_exempt
 def uploadrules(request):
 	if not request.method == 'POST':
 		return HttpResponseBadRequest('Not POST request')
@@ -397,7 +398,7 @@ def uploadrules(request):
 	return HttpResponse('Successfully uploaded a rule.')
 
 
-
+@csrf_exempt
 def getrules(request):
 	if not request.method == 'POST':
 		return HttpResponseBadRequest('Not POST request')
@@ -414,7 +415,7 @@ def getrules(request):
 	return HttpResponse(cjson.encode(rules))
 
 
-
+@csrf_exempt
 def deleterules(request):
 	if not request.method == 'POST':
 		return HttpResponseBadRequest('Not POST request')
@@ -446,7 +447,7 @@ def privacyrules(request):
 	return render_to_response('privacyrules.html', { 'apikey': userinfo.apiKey, 'rule_list': rules }, context_instance=RequestContext(request))
 
 
-
+@csrf_exempt
 def locationlabel(request):
 	if not request.method == 'POST':
 		return HttpResponseBadRequest('Not POST request')
@@ -642,7 +643,7 @@ def is_deny_condition_match(check_item, rule):
 	
 	return False
 
-
+@csrf_exempt
 def search_rules(request):
 	if request.method != 'POST':
 		return HttpResponseBadRequest('Not POST request')

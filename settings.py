@@ -1,5 +1,7 @@
 # Django settings for sensorsafe project.
 
+PROJECT_PATH = '/home/haksoo/django-projects/sensorsafe'
+
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
@@ -10,7 +12,7 @@ ADMINS = (
 MANAGERS = ADMINS
 
 DATABASE_ENGINE = 'sqlite3'           # 'postgresql_psycopg2', 'postgresql', 'mysql', 'sqlite3' or 'oracle'.
-DATABASE_NAME = '/home/haksoo/django-projects/sensorsafe/sqlite3.db'             # Or path to database file if using sqlite3.
+DATABASE_NAME = PROJECT_PATH + '/sqlite3.db'             # Or path to database file if using sqlite3.
 DATABASE_USER = ''             # Not used with sqlite3.
 DATABASE_PASSWORD = ''         # Not used with sqlite3.
 DATABASE_HOST = ''             # Set to empty string for localhost. Not used with sqlite3.
@@ -61,6 +63,7 @@ MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+		'django.middleware.csrf.CsrfViewMiddleware',
 )
 
 ROOT_URLCONF = 'sensorsafe.urls'
@@ -69,7 +72,7 @@ TEMPLATE_DIRS = (
     # Put strings here, like "/home/html/django_templates" or "C:/www/django/templates".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
-		'/home/haksoo/django-projects/sensorsafe/template'
+		PROJECT_PATH + '/template'
 )
 
 INSTALLED_APPS = (
@@ -82,11 +85,11 @@ INSTALLED_APPS = (
 		'datastore',
 )
 
-STATIC_DOC_ROOT = '/home/haksoo/django-projects/sensorsafe/template'
+STATIC_DOC_ROOT = PROJECT_PATH + '/template'
 
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/profile/'
 
 AUTH_PROFILE_MODULE = 'datastore.UserProfile' 
 
-PROFILE_LOG_BASE = '/home/haksoo/profile-logs'
+PROFILE_LOG_BASE = PROJECT_PATH + '/profile-logs'
