@@ -11,21 +11,28 @@ Dependencies
 	
 Installation Steps
 
-# git clone 
-# cd sensorsafe
-
-Edit PROJECT_PATH in setting.py to point your project location.
+Prepare required packages..
 
 # sudo apt-get install mongodb python-pymongo python-guppy python-cjson 
 
- Download googlemaps-1.0.2.tar.gz from http://sourceforge.net/projects/py-googlemaps/files/latest/download
+Download googlemaps-1.0.2.tar.gz from http://sourceforge.net/projects/py-googlemaps/files/latest/download..
 
 # tar xvzf googlemaps-1.0.2.tar.gz
 # cd googlemaps-1.0.2
 # sudo python setup.py install
 
+Download source code..
+
+# git clone git://github.com/FieldStream/sensorsafe.git
+# cd sensorsafe
+# pwd
+
+Edit PROJECT_PATH in setting.py to point your project location. (output from the above 'pwd' command)
+
+Edit BROKER_ADDRESS and isBrokerHTTPS in datastore/views.py appropriately. (If you follow install guide on sensorsafe_broker repository, they should be "localhost:8080" and "False")
+
 # python manage.py runserver
 
 Luanch your favorite web browser and connect to http://localhost:8000.  You should now see the SensorSafe login page.
 
-
+Now, please go to https://github.com/FieldStream/sensorsafe_broker and follow steps described in INSTALL to install SensorSafe Broker.
