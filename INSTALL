@@ -1,6 +1,10 @@
 SensorSafe Data Store Installation Guide
 
 
+TODO: 
+. Added instructions for Apache server setup.
+
+
 Dependencies
 
 1. Ubuntu (11.10 and 9.04 have been tested)
@@ -30,6 +34,8 @@ Download source code..
 Edit PROJECT_PATH in setting.py to point your project location. (output from the above 'pwd' command)
 
 Edit BROKER_ADDRESS and isBrokerHTTPS in datastore/views.py appropriately. (If you follow install guide on sensorsafe_broker repository, they should be "localhost:8080" and "False")
+
+Edit BROKER_ADDRESS in settings.js in template appropriately. (If you follow install guide on sensorsafe_broker repository, itshould be "http://localhost:8080")
 
 # python manage.py runserver
 

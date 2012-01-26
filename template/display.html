@@ -18,7 +18,6 @@ html { height: 100% }
 <script type="text/javascript" src="/files/js/json2-min.js"></script>
 
 <script type="text/javascript">
-var BROKER_ADDRESS = 'http://fieldstream.nesl.ucla.edu/broker'
 
 $(document).ready(function() 
 {
@@ -39,10 +38,11 @@ $(document).ready(function()
 	});
 	update_timeslider();
 
-	$("#repeat_dialog").dialog({ 
+	$("#chart_dialog").dialog({ 
 		autoOpen: false,
 		modal: true,
-		width: 400,
+		title: 'Chart',
+		width: 750,
 	});
 	
 	var datepickerOptions = {
@@ -142,13 +142,20 @@ function create_chart(datalist)
 			//showFirstLabel: false
 		},
 		tooltip: {
+			enabled: true,
 			shared: true               
 		},
 		legend: {
 			enabled: false
 		},
 		plotOptions: {
+			line: {
+				marker: {
+					enabled: false
+				}
+			},
 			series: {
+				enableMouseTracking: false,
 				lineWidth: 1,
 				marker: {
 					radius: 1,
@@ -175,9 +182,9 @@ function create_chart(datalist)
 
 function update_timeslider()
 {
-	var startDate = Highcharts.dateFormat('%I:%M:%S %p %b %e, %Y', $( "#timeslider" ).slider( "values", 0 ) * 1000);
-	var endDate = Highcharts.dateFormat('%I:%M:%S %p %b %e, %Y', $( "#timeslider" ).slider( "values", 1 ) * 1000);
-	$( "#amount" ).val( startDate + " - " + endDate );
+	var startDate = Highcharts.dateFormat('%I:%M:%S %p %b %e, %Y', $( "#timeslider" ).slider( "values", 0 ));
+	var endDate = Highcharts.dateFormat('%I:%M:%S %p %b %e, %Y', $( "#timeslider" ).slider( "values", 1 ));
+	$( "#timerange_text" ).val( startDate + " - " + endDate );
 }
 
 function getRectBox(rect)
@@ -205,8 +212,15 @@ function getIndex(element, list)
 	return null;
 }
 
-function getData()
+function show_data()
 {
+	if (get_checked_channels().length <= 0) {
+		alert("Please select data channels.");
+		return;
+	}
+	
+	$('#chart_dialog').dialog('open');
+
 	var message = { 'query': getConditions(), 'sort': {'timestamp': 1} };
 	delete message['query']['consumer']
 	console.log('Sending Query');
@@ -241,7 +255,7 @@ function getData()
 						interval = data[i]['sampling_interval'];
 						for (var k in data[i]['data'])
 						{
-							datalist[index].push([(timestamp+(k*interval))*1000, data[i]['data'][k][channel]]);
+							datalist[index].push([(timestamp+(k*interval)), data[i]['data'][k][channel]]);
 						}
 					}
 				}
@@ -254,7 +268,7 @@ function getData()
 						interval = data[i]['sampling_interval'];
 						for (var k in data[i]['data'])
 						{
-							datalist[index].push([(timestamp+(k*interval))*1000, data[i]['data'][k]]);
+							datalist[index].push([(timestamp+(k*interval)), data[i]['data'][k]]);
 						}
 					}
 				}
@@ -414,25 +428,6 @@ function getSummary() {
 			}
 		}
 	);
-
-	// get list of data consumers
-	$.post(BROKER_ADDRESS + '/get_consumers/',
-		{ 'apikey': '{{apikey}}' },
-		function(data, textStatus, XMLHttpRequest) {
-			consumers = JSON.parse(data);
-			console.log('Received data');
-			console.log(consumers);
-			if (data.length <= 0)
-				return
-			
-			$('#consumers').html('');
-			for ( var i in consumers )
-			{
-				old = $('#consumers').html();
-				$('#consumers').html(old+'<label><input type="checkbox" id="' + consumers[i] + '"/>' + consumers[i] + '</label><br/>');
-			}
-		}
-	);
 }
 
 function deleteRegion() {
@@ -517,6 +512,16 @@ function drawRect(latLng)
 			drawRect(event.latLng);
 		});
 
+		google.maps.event.addListener(rect, 'mousemove', function(event) {
+			if (isDrawingRect)
+			{
+				var path = rect.getPath();
+				path.setAt(1, new google.maps.LatLng(path.getAt(0).lat(), event.latLng.lng()));
+				path.setAt(2, event.latLng);
+				path.setAt(3, new google.maps.LatLng(event.latLng.lat(), path.getAt(0).lng()));
+			}
+		});
+
 		isDrawingRect = true;
 	}
 	else
@@ -534,17 +539,6 @@ function get_checked_channels()
 			channels.push(data_channels[i]);
 	}
 	return channels;
-}
-
-function get_checked_consumers()
-{
-	var checked_consumers = [];
-	for (var i in consumers)
-	{
-		if ($('#' + consumers[i]).attr('checked') == true)
-			checked_consumers.push(consumers[i]);
-	}
-	return checked_consumers;
 }
 
 function test()
@@ -570,16 +564,22 @@ function getConditions()
 	mintime = $('#timeslider').slider('values',0);
 	maxtime = $('#timeslider').slider('values',1);
 	if ($('#repeat').attr('checked') == false) {
-		if (mintime > 0 && maxtime > 0) {
-			cond['timestamp'] =  { '$gte': mintime, '$lte': maxtime };
+		if ($('#timerange').attr('checked') == true)
+		{
+			if (mintime > 0 && maxtime > 0) {
+				cond['timestamp'] =  { '$gte': mintime, '$lte': maxtime };
+			}
 		}
 	} else {
-		if (mintime > 0 && maxtime > 0) {
+		if (mintime > 0 && maxtime > 0 && $('#timerange').attr('checked') == true) {
 			cond['repeat_time'] = { 'time_range': [ mintime, maxtime ] };
 		}	else {
 			cond['repeat_time'] = {}
 		}
-		cond['repeat_time']['hour_min'] = [ $('#repeat_starttime').val(), $('#repeat_endtime').val() ];
+
+		if ($('#allday').attr('checked') == false)
+			cond['repeat_time']['hour_min'] = [ $('#repeat_starttime').val(), $('#repeat_endtime').val() ];
+		
 		cond['repeat_time']['day'] = [];
 		if ( $('#Mon').attr('checked') == true ) 
 			cond['repeat_time']['day'].push($('#Mon').val());
@@ -595,6 +595,7 @@ function getConditions()
 			cond['repeat_time']['day'].push($('#Sat').val());
 		if ( $('#Sun').attr('checked') == true ) 
 			cond['repeat_time']['day'].push($('#Sun').val());
+
 		console.log(cond);
 	}
 
@@ -602,25 +603,11 @@ function getConditions()
 	channels = get_checked_channels();
 	if (channels.length > 0)
 	{ 
-		if (channels.length == 1)
-			cond['data_channel'] = channels[0];
-		else
-		{
-			cond['$or'] = [];
-			for (var i in channels)
-				cond['$or'].push({'data_channel': channels[i]});
-		}
+		cond['data_channel'] = { '$in': [] };
+		for (var i in channels)
+			cond['data_channel']['$in'].push(channels[i]);
 	}
 	
-	// data consumers
-	var checked_consumers = get_checked_consumers();
-	if (checked_consumers.length > 0)
-	{ 
-		cond['consumer'] = [];
-		for (var i in checked_consumers)
-			cond['consumer'].push(checked_consumers[i]);
-	}
-
 	return cond;
 }
 
@@ -664,119 +651,94 @@ function initTimeRange()
 }
 
 
-function repeat_checkbox()
-{
-	if ($('#repeat').attr('checked') == true)
-		$('#repeat_dialog').dialog('open');
-	else
-		$('#repeat_dialog').dialog('close');
-	repeat_change()
-}
-
 function allday_checkbox()
 {
 	if ($('#allday').attr('checked') == true) {
-		$('#starttime').hide();
-		$('#endtime').hide();
+		$('#repeat_time').hide();
 	} else {
-		$('#starttime').show();
-		$('#endtime').show();
+		$('#repeat_time').show();
 	}
-}
-
-function repeat_change()
-{
-	method = $('#repeat_method').val();
-	$('#Daily_repeat_ui').hide();
-	$('#Weekly_repeat_ui').hide();
-	$('#Monthly_repeat_ui').hide();
-	$('#Yearly_repeat_ui').hide();
-	$('#'+method+'_repeat_ui').show();
-}
-
-function repeat_done()
-{
-	$('#repeat_dialog').dialog('close');
-}
-
-function repeat_cancel()
-{
-	$('#repeat_dialog').dialog('close');
 }
 
 </script>
 {% endblock %}
 
 {% block content %}
-<table>
-<tr><td width=600 height=400><div id="map_canvas"></div></td>
-<td valign='top'>
-<button id='getSummary' onclick='getSummary()'>Get Summary</button><br/>
-<button id='getData' onclick='getData()'>Get Data!</button><br/>
+<b>Location</b>
+<table cellspacing=0 cellpadding=0>
+<tr>
+<td width=600 height=350 colspan=2><div id="map_canvas"></div></td>
+</tr>
+<tr>
+<td align='right'>
+
 <button id='deleteRegion' onclick='deleteRegion()'>Delete Region</button><br/>
-<button id='initTimeRange' onclick='initTimeRange()'>Init Time Range</button><br/>
+<!--<button id='initTimeRange' onclick='initTimeRange()'>Init Time Range</button><br/>
 <button id='createRule' onclick='createRule()'>Create Rule</button><br />
 <button id='deleteAllRules' onclick='deleteAllRules()'>Delete All Rules</button><br />
-<button id='listRules' onclick='listRules()'>List Rules</button><br/>
-<!--Latitude: <b id='latitude'>?</b><br/>
-Longitude: <b id='longitude'>?</b><br/>-->
-<div id="consumers"></div>
-<hr/>
-<div id="data_channel"></div>
-<button id='test' onclick='test()'>Test</button><br/>
+<button id='listRules' onclick='listRules()'>List Rules</button><br/>-->
 </td></tr>
+</table>
+
+<b>Time</b>
+<table cellspacing=0 cellpadding=0>
 <tr>
-	<td>
-	<label for="amount">Time range:</label>
-	<input type="text" id="amount" size=80 style="border:0; font-weight:bold;" /><br/>
+	<td width=110>
+	<label><input type='checkbox' id='timerange'>Time range:</label>
+	</td>
+	<td width=490>
+	<input type="text" id="timerange_text" size=50 style="border:0; font-weight:bold;" /><br/>
 	<div id="timeslider"></div>
 	</td>
 </tr>
+</table>
+
+<br/>
+
+<table cellspacing=0 cellpadding=0>
 <tr>
-<td>
-	<input type="text" id="startdate"><input type="text" id="starttime"> to <input type="text" id="endtime"><input type="text" id="enddate"><br/>
-	<label><input type="checkbox" id="allday" onClick="allday_checkbox()">All Day</label> 
-	<label><input type="checkbox" id="repeat" onClick="repeat_checkbox()">Repeat...</label>
-<td>
-</tr>
-<tr>
-<td>
-<div id="container" style="width: 600px; height: 350px; margin: 0 auto"></div>
+<td width=110>
+	<label><input type="checkbox" id="repeat">Repeat:</label>
+</td>
+<td width=490>
+	<label><input type="checkbox" id="Sun" value='Sun'>Sun</label>
+	<label><input type="checkbox" id="Mon" value='Mon' checked>Mon</label> 
+	<label><input type="checkbox" id="Tue" value='Tue' checked>Tue</label> 
+	<label><input type="checkbox" id="Wed" value='Wed' checked>Wed</label> 
+	<label><input type="checkbox" id="Thu" value='Thu' checked>Thu</label> 
+	<label><input type="checkbox" id="Fri" value='Fri' checked>Fri</label> 
+	<label><input type="checkbox" id='Sat' value='Sat'>Sat</label><br/> 
+
+	<label><input type="checkbox" id="allday" onClick="allday_checkbox()">All Day</label>
+	&nbsp;&nbsp;&nbsp;<font id='repeat_time'>
+	From <input type="text" size=10 id='repeat_starttime' value='9:51pm'> 
+	to <input type="text" size=10 id='repeat_endtime' value='9:55pm'>
+	<!--<input type="text" id="startdate"><input type="text" id="starttime"> to <input type="text" id="endtime"><input type="text" id="enddate"><br/>-->
+	</font>
+
 </td>
 </tr>
 </table>
 
-<div id='debug'></div>
-
-<div id="repeat_dialog" title="Repeat">
-Repeats: <select id='repeat_method' onChange='repeat_change()'>
-<option>Daily</option>
-<option selected>Weekly</option>
-<option>Monthly</option>
-<option>Yearly</option>
-</select><br/>
 <br/>
-<div id='Daily_repeat_ui'>Daily</div>
-<div id='Weekly_repeat_ui'>
-Repeat on:
-<label><input type="checkbox" id="Sun" value='Sun'>Sun</label>
-<label><input type="checkbox" id="Mon" value='Mon' checked>Mon</label> 
-<label><input type="checkbox" id="Tue" value='Tue' checked>Tue</label> 
-<label><input type="checkbox" id="Wed" value='Wed' checked>Wed</label> 
-<label><input type="checkbox" id="Thu" value='Thu' checked>Thu</label> 
-<label><input type="checkbox" id="Fri" value='Fri' checked>Fri</label> 
-<label><input type="checkbox" id='Sat' value='Sat'>Sat</label> 
+<b>Data Channels</b>
+<table cellspacing=0 cellpadding=0>
+<tr><td><div id="data_channel"></div></td></tr>
 
-From <input type="text" id='repeat_starttime' value='9:51pm'> to <input type="text" id='repeat_endtime' value='9:55pm'>
+</table>
+<br/>
 
-Until: 
-<label><input type="radio" name="until" value="Forever" checked>Forever</label> 
-<label><input type="radio" name="until" value="date"><input type="text" id='repeat_enddate'></label>
-</div>
-<div id='Monthly_repeat_ui'>Monthly</div>
-<div id='Yearly_repeat_ui'>Yearly</div>
-<div align='right'><button type="button" onClick="repeat_done()">Done</button>
-<button type="button" onClick="repeat_cancel()">Cancel</button></div>
+<table width=600>
+<tr><td align='center'>
+<button id='show_data' onclick='show_data()'>Show Data</button>
+<button id='getSummary' onclick='getSummary()'>Get Summary</button>
+</td></tr>
+</table>
+
+<br/><br/><br/><br/>
+
+<div id='chart_dialog'>
+<div id="container" style="width: 700px; height: 400px; margin: 0 auto"></div>
 </div>
 
 {% endblock %}

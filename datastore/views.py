@@ -377,7 +377,7 @@ def query(request):
 @login_required
 def display(request):
 	userinfo = UserProfile.objects.get(userID__exact = request.user)
-	return render_to_response('display2.html', { 'apikey': userinfo.apiKey }, context_instance=RequestContext(request))
+	return render_to_response('display.html', { 'apikey': userinfo.apiKey }, context_instance=RequestContext(request))
 
 
 @csrf_exempt
