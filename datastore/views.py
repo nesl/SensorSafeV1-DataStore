@@ -38,14 +38,11 @@ import json
 import privacyengine
 
 
+BROKER_ADDRESS = 'localhost:8080'
+isBrokerHTTPS = False
 
-
-
-
-
-BROKER_ADDRESS = 'fieldstream.nesl.ucla.edu'
-
-
+#BROKER_ADDRESS = 'fieldstream.nesl.ucla.edu'
+#isBrokerHTTPS = True
 
 db = pymongo.Connection()['sensorsafe_database']
 
@@ -205,7 +202,10 @@ def register(request, url=None):
 						'email': form.data['email'],
 						'address': request.get_host()
 					}) 
-					conn = httplib.HTTPSConnection(BROKER_ADDRESS, timeout=10)
+					if isBrokerHTTPS:
+						conn = httplib.HTTPSConnection(BROKER_ADDRESS, timeout=10)
+					else:
+						conn = httplib.HTTPConnection(BROKER_ADDRESS, timeout=10)
 					conn.request('POST', '/broker/register_contributor/', params)
 					response = conn.getresponse()
 					log(str(response.status) + ' ' + response.reason)
@@ -263,7 +263,10 @@ def query(request):
 			params = urllib.urlencode({
 				'apikey': request.POST['apikey'], 
 			}) 
-			conn = httplib.HTTPSConnection('fieldstream.nesl.ucla.edu', timeout=10)
+			if isBrokerHTTPS:
+				conn = httplib.HTTPSConnection(BROKER_ADDRESS, timeout=10)
+			else:
+				conn = httplib.HTTPConnection(BROKER_ADDRESS, timeout=10)
 			conn.request('POST', '/broker/get_username/', params)
 			response = conn.getresponse()
 			#log(str(response.status) + ' ' + response.reason)
@@ -669,7 +672,10 @@ def search_rules(request):
 			params = urllib.urlencode({
 				'apikey': request.POST['apikey'], 
 			}) 
-			conn = httplib.HTTPSConnection('fieldstream.nesl.ucla.edu', timeout=10)
+			if isBrokerHTTPS:
+				conn = httplib.HTTPSConnection(BROKER_ADDRESS, timeout=10)
+			else:
+				conn = httplib.HTTPConnection(BROKER_ADDRESS, timeout=10)
 			conn.request('POST', '/broker/get_username/', params)
 			response = conn.getresponse()
 			#log(str(response.status) + ' ' + response.reason)
