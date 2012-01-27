@@ -279,7 +279,7 @@ def modify_and_save(modify_result, collection, query_result = None, merged_query
 
 
 
-def get_time_boundaries(message, rules, consumer):
+def get_time_boundaries(message, rules, consumer, collection):
 	time_boundaries = []
 
 	# get time stamps in query
@@ -650,7 +650,7 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 			# Pre-query waveseg processing for range queries	
 			# Note: this is needed only for range queries, and this checking is done in the function because we also need to check if any rules contain range conditions.
 			if PRE_QUERY_WAVESEG_SPLIT:
-				time_boundaries = get_time_boundaries(message, rules, consumer)
+				time_boundaries = get_time_boundaries(message, rules, consumer, collection)
 				if time_boundaries:
 					# waveseg_pre_query_split_collection
 					collection = pre_query_waveseg_split(username, collection, message, rules, consumer, time_boundaries)
@@ -718,7 +718,7 @@ def process_query(dbConnection, request, message, isConsumer, consumer, username
 		
 		# waveseg processing for range queries
 		if PRE_QUERY_WAVESEG_SPLIT:
-			time_boundaries = get_time_boundaries(message, None, None)
+			time_boundaries = get_time_boundaries(message, None, None, collection)
 			if time_boundaries:
 				# waveseg_pre_query_split_collection 
 				collection = pre_query_waveseg_split(username, collection, message, None, None, time_boundaries)
