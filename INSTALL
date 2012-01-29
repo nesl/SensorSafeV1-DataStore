@@ -1,5 +1,10 @@
 SensorSafe Data Store Installation Guide
 
+Dependencies
+1.Python 2.X(2.6 and 2.7 have been tested to be working)
+2.Django 1.2+(Both Django 1.2 and 1.3 have been verified)
+3.
+
 Notes.
 + All communications with the server are HTTPS.  HTTP connections will be simply rejected.
 
