@@ -1,3 +1,5 @@
+sqlite3.db
+
 # Django project ignores
 logs
 *.pyc
