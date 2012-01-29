@@ -1,5 +1,8 @@
 SensorSafe Project: Remote Data Store (haksoo@cs.ucla.edu)
 
+Please read file "INSTALL" for installation guide.
+
+You might also want to take a look at this: 
 Broker repository: https://github.com/FieldStream/SensorSafeBroker
 
 We use Apache webserver with Django web framework w/ sqlite3 + mongoDB backend.
@@ -20,7 +23,3 @@ We use Apache webserver with Django web framework w/ sqlite3 + mongoDB backend.
 + Why Django?
   Better S/W engineering: MVC, Python. 
   Although it might be slow but our performance mostly depends on sensor data and rule processing.
-
-+ Why Apache?
-  Come on, this is de-facto standard web server!
-
