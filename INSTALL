@@ -1,0 +1,5 @@
+SensorSafe Data Store Installation Guide
+
+Notes.
++ All communications with the server are HTTPS.  HTTP connections will be simply rejected.
+
