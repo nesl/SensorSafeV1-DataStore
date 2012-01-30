@@ -40,6 +40,10 @@ Edit BROKER_ADDRESS in settings.js in template appropriately. (If you follow ins
 Creating Database Fixtures
 # python manage.py syncdb
 
+Giving write permissions to PROJECT_PATH
+#sudo chown www-data PROJECT_PATH -R
+where you have to replace PROJECT_PATH with the actual project path you had obtained via pwd command
+
 # python manage.py runserver
 
 Launch your favorite web browser and connect to http://localhost:8000.  You should now see the SensorSafe login page.
