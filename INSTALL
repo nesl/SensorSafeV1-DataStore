@@ -31,11 +31,25 @@ Edit PROJECT_PATH in setting.py to point your project location. (output from the
 
 Edit BROKER_ADDRESS and isBrokerHTTPS in datastore/views.py appropriately. (If you follow install guide on sensorsafe_broker repository, they should be "localhost:8080" and "False")
 
-Edit BROKER_ADDRESS in settings.js in template appropriately. (If you follow install guide on sensorsafe_broker repository, itshould be "http://localhost:8080")
+Edit BROKER_ADDRESS in settings.js in template appropriately. (If you follow install guide on sensorsafe_broker repository, it should be "http://localhost:8080")
+
+Creating Database Fixtures
+# python manage.py syncdb
+
+Giving write permissions to PROJECT_PATH
+#sudo chown www-data PROJECT_PATH -R
+where you have to replace PROJECT_PATH with the actual project path you had obtained via pwd command
+
+Apache Server Confuguration
+# sudo apt-get install apache2 libapache2-mod-wsgi
+# sudo a2ensite wsgi
+# sudo a2enmod headers
+Add following line to httpd.conf in /etc/apache2
+# Header set Access-Control-Allow-Origin "*"
 
 # python manage.pt syncdb
 # python manage.py runserver
 
-Luanch your favorite web browser and connect to http://localhost:8000.  You should now see the SensorSafe login page.
+Launch your favorite web browser and connect to http://localhost:8000.  You should now see the SensorSafe login page.
 
 Now, please go to https://github.com/FieldStream/sensorsafe_broker and follow steps described in INSTALL to install SensorSafe Broker.
