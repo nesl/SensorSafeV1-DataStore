@@ -38,12 +38,6 @@ import json
 import privacyengine
 
 
-#BROKER_ADDRESS = 'localhost:8080'
-#isBrokerHTTPS = False
-
-BROKER_ADDRESS = 'fieldstream.nesl.ucla.edu'
-isBrokerHTTPS = True
-
 db = pymongo.Connection()['sensorsafe_database']
 
 def print_error_context():
