@@ -46,10 +46,20 @@ Apache Server Confuguration
 # sudo a2enmod headers
 Add following line to httpd.conf in /etc/apache2
 # Header set Access-Control-Allow-Origin "*"
+Enabling SSL
+# Follow http://beginlinux.com/blog/2009/01/ssl-on-ubuntu-810-apache2/
 
-# python manage.pt syncdb
+# Open /etc/apache2/sites-enabled/default and /default-ssl and add the following three lines after </Directory>
+# Alias /files /PATH_TO_BROKER_FOLDER/template
+# WSGIScriptAlias /broker /PATH_TO_BROKER_FOLDER/apache/django.wsgi
+# WSGIScriptAlias / /PATH_TO_SENSORSAFE_FOLDER/apache/django.wsgi
+
+# Reload apache webserver using sudo /etc/init.d/apache2 reload
+
+Installing Database Fixtures
+# python manage.py syncdb
 # python manage.py runserver
 
-Launch your favorite web browser and connect to http://localhost:8000.  You should now see the SensorSafe login page.
+Launch your favorite web browser and connect to https://localhost.  You should now see the SensorSafe login page.
 
 Now, please go to https://github.com/FieldStream/sensorsafe_broker and follow steps described in INSTALL to install SensorSafe Broker.
