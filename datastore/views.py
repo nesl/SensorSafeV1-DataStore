@@ -37,6 +37,8 @@ import json
 
 import privacyengine
 
+isBrokerHTTPS = True
+BROKER_ADDRESS = 'fieldstream.nesl.ucla.edu'
 
 db = pymongo.Connection()['sensorsafe_database']
 
