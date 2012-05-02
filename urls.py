@@ -19,6 +19,9 @@ urlpatterns = patterns('',
 	(r'^logout/$', 'datastore.views.logout_view'),
 	(r'^logout$', 'datastore.views.logout_view'),
 	
+	(r'^deleteall/$', 'datastore.views.deleteall'),
+	(r'^deleteall$', 'datastore.views.deleteall'),
+	
 	(r'^upload/$', 'datastore.views.upload'),
 	(r'^upload$', 'datastore.views.upload'),
 	

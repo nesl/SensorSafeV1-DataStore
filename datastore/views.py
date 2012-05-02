@@ -225,6 +225,21 @@ def register(request, url=None):
 
 
 
+@csrf_exempt
+def deleteall(request):
+	if not request.method == 'POST':
+		return HttpResponseBadRequest('Not POST request')
+	
+	isSuccess, userinfo, http_response = check_post_request_apikey(request.POST)
+	if not isSuccess:
+		return http_response
+	username = userinfo.userID.username
+
+	collection = db[username]
+	collection.remove({})
+	
+	return HttpResponse('Deleted all items of user: ' + username)
+
 
 
 #@hotshot_heapy_profile("query")

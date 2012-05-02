@@ -382,9 +382,9 @@ function getSummary() {
 		{ 'apikey': '{{apikey}}', 'data': JSON.stringify(message) },
 		function (data, textStatus, XMLHttpRequest) {
 			data = JSON.parse(data);
-			mintime = data['timestamp'];
 			console.log('Received mintime');
 			console.log(data);
+			mintime = data[0]['timestamp'];
 			$('#timeslider').slider("option", "min", mintime);
 			$('#timeslider').slider("option", "values", [mintime, maxtime]);
 			update_timeslider();
@@ -397,9 +397,9 @@ function getSummary() {
 		{ 'apikey': '{{apikey}}', 'data': JSON.stringify(message) },
 		function (data, textStatus, XMLHttpRequest) {
 			data = JSON.parse(data);
-			maxtime = data['timestamp'];
 			console.log('Received maxtime');
 			console.log(data);
+			maxtime = data[0]['timestamp'];
 			$('#timeslider').slider("option", "max", maxtime);
 			$('#timeslider').slider("option", "values", [mintime, maxtime]);
 			update_timeslider();
@@ -687,7 +687,7 @@ function allday_checkbox()
 	<label><input type='checkbox' id='timerange'>Time range:</label>
 	</td>
 	<td width=490>
-	<input type="text" id="timerange_text" size=50 style="border:0; font-weight:bold;" /><br/>
+	<input type="text" id="timerange_text" size=100 style="border:0; font-weight:bold;" /><br/>
 	<div id="timeslider"></div>
 	</td>
 </tr>
